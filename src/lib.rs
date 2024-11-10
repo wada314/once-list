@@ -141,31 +141,6 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
         }
         None
     }
-
-    pub fn remove_map<F, U>(&mut self, mut f: F) -> Option<U>
-    where
-        F: FnMut(T) -> Result<U, T>,
-    {
-        let mut next_cell = &mut self.head;
-        while let Some(next_box) = next_cell.take() {
-            let next_val = Box::into_inner(next_box);
-            match f(next_val.val) {
-                Ok(u) => {
-                    // reconnect the list
-                    if let Some(next_next) = next_val.next.take() {
-                        let _ = next_cell.set(next_next);
-                    }
-                    return Some(u);
-                }
-                Err(t) => {
-                    next_val.val = t;
-                    let _ = next_cell.set(next_box);
-                    next_cell = &mut unsafe { next_cell.get_mut().unwrap_unchecked() }.next;
-                }
-            }
-        }
-        None
-    }
 }
 
 impl<T> Default for OnceList<T, Global> {

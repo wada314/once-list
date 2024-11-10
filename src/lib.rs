@@ -73,12 +73,16 @@ impl<T, A: Allocator> OnceList<T, A> {
         self.head = OnceCell::new();
     }
 
+    /// Returns an allocator of this struct.
     pub fn allocator(&self) -> &A {
         &self.alloc
     }
 }
 
 impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
+    /// Appends a value to the list, and returns the reference to that value.
+    ///
+    /// Note that this method takes `&self`, not `&mut self`.
     pub fn push(&self, val: T) -> &T {
         let mut next_cell = &self.head;
         let mut boxed_cons = Box::new_in(Cons::new(val), self.alloc.clone());
@@ -97,28 +101,8 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
         }
     }
 
-    pub fn find<P: FnMut(&T) -> bool>(&self, mut pred: P) -> Option<&T> {
-        let mut next_cell = &self.head;
-        while let Some(c) = next_cell.get() {
-            if pred(&c.val) {
-                return Some(&c.val);
-            }
-            next_cell = &c.next;
-        }
-        None
-    }
-
-    pub fn find_map<F: FnMut(&T) -> Option<&U>, U>(&self, mut f: F) -> Option<&U> {
-        let mut next_cell = &self.head;
-        while let Some(c) = next_cell.get() {
-            if let Some(u) = f(&c.val) {
-                return Some(u);
-            }
-            next_cell = &c.next;
-        }
-        None
-    }
-
+    /// Find a first value in the list matches the predicate, remove that item from the list,
+    /// and then returns that value.
     pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
     where
         P: FnMut(&T) -> bool,
@@ -163,13 +147,34 @@ impl<T, A: Allocator> IntoIterator for OnceList<T, A> {
         Iter(self.head)
     }
 }
+
 impl<T, A: Allocator> Iterator for Iter<T, A> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        let cons = self.0.take()?;
+        let cons = Box::into_inner(self.0.take()?);
         let val = cons.val;
         self.0 = cons.next;
         Some(val)
+    }
+}
+
+impl<T> FromIterator<T> for OnceList<T, Global> {
+    fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
+        // TODO: O(n^2). Can optimize.
+        let list = Self::new();
+        for val in iter {
+            list.push(val);
+        }
+        list
+    }
+}
+
+impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
+    fn extend<U: IntoIterator<Item = T>>(&mut self, iter: U) {
+        // TODO: O(n^2). Can optimize.
+        for val in iter {
+            self.push(val);
+        }
     }
 }
 

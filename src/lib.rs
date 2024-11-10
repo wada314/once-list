@@ -56,6 +56,22 @@ impl<T, A: Allocator> OnceList<T, A> {
         }
     }
 
+    /// Returns a first value, if it exists.
+    pub fn first(&self) -> Option<&T> {
+        self.head.get().map(|c| &c.val)
+    }
+
+    /// Returns a last value, if it exists.
+    pub fn last(&self) -> Option<&T> {
+        let mut last_opt = None;
+        let mut next_cell = &self.head;
+        while let Some(next_box) = next_cell.get() {
+            last_opt = Some(&next_box.val);
+            next_cell = &next_box.next;
+        }
+        last_opt
+    }
+
     /// Returns an iterator over the `&T` references in the list.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         let mut next_cell = &self.head;

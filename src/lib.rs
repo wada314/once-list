@@ -92,6 +92,14 @@ impl<T, A: Allocator> OnceList<T, A> {
         last_opt
     }
 
+    fn last_cell(&self) -> &OnceCell<Box<Cons<T, A>, A>> {
+        let mut next_cell = &self.head;
+        while let Some(next_box) = next_cell.get() {
+            next_cell = &next_box.next;
+        }
+        next_cell
+    }
+
     /// Returns an iterator over the `&T` references in the list.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         let mut next_cell = &self.head;
@@ -197,10 +205,11 @@ impl<T: Debug, A: Allocator> Debug for OnceList<T, A> {
 
 impl<T> FromIterator<T> for OnceList<T, Global> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
-        // TODO: O(n^2). Can optimize.
         let list = Self::new();
+        let mut last_cell = &list.head;
         for val in iter {
-            list.push(val);
+            let _ = last_cell.set(Box::new(Cons::new(val)));
+            last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
         }
         list
     }
@@ -208,9 +217,11 @@ impl<T> FromIterator<T> for OnceList<T, Global> {
 
 impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
     fn extend<U: IntoIterator<Item = T>>(&mut self, iter: U) {
-        // TODO: O(n^2). Can optimize.
+        let mut last_cell = self.last_cell();
+        let alloc = self.allocator();
         for val in iter {
-            self.push(val);
+            let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
+            last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
         }
     }
 }

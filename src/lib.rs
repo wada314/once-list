@@ -57,6 +57,24 @@ impl<T, A: Allocator> OnceList<T, A> {
         }
     }
 
+    /// Returns the number of values in the list. This method is O(n).
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    /// Returns `true` if the list is empty.
+    pub fn is_empty(&self) -> bool {
+        self.head.get().is_none()
+    }
+
+    /// Returns `true` if the list contains the value.
+    pub fn contains(&self, val: &T) -> bool
+    where
+        T: PartialEq,
+    {
+        self.iter().any(|v| v == val)
+    }
+
     /// Returns a first value, if it exists.
     pub fn first(&self) -> Option<&T> {
         self.head.get().map(|c| &c.val)
@@ -141,6 +159,32 @@ impl<T, A: Allocator> OnceList<T, A> {
     pub fn allocator(&self) -> &A {
         &self.alloc
     }
+
+    /// Find a first value in the list matches the predicate, remove that item from the list,
+    /// and then returns that value.
+    pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
+    where
+        P: FnMut(&T) -> bool,
+    {
+        let mut next_cell = &mut self.head;
+        while let Some(next_box) = next_cell.take() {
+            if pred(&next_box.val) {
+                let mut next_cons = Box::into_inner(next_box);
+
+                // reconnect the list
+                if let Some(next_next) = next_cons.next.take() {
+                    let _ = next_cell.set(next_next);
+                }
+
+                return Some(next_cons.val);
+            }
+
+            let _ = next_cell.set(next_box);
+            // Safe because we are sure the `next_cell` value is set.
+            next_cell = &mut unsafe { next_cell.get_mut().unwrap_unchecked() }.next;
+        }
+        None
+    }
 }
 
 impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
@@ -163,31 +207,6 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
                 }
             }
         }
-    }
-
-    /// Find a first value in the list matches the predicate, remove that item from the list,
-    /// and then returns that value.
-    pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
-    where
-        P: FnMut(&T) -> bool,
-    {
-        let mut next_cell = &mut self.head;
-        while let Some(next_box) = next_cell.take() {
-            if pred(&next_box.val) {
-                let mut next_val = Box::into_inner(next_box);
-
-                // reconnect the list
-                if let Some(next_next) = next_val.next.take() {
-                    let _ = next_cell.set(next_next);
-                }
-                return Some(next_val.val);
-            }
-
-            let _ = next_cell.set(next_box);
-            // Safe because we are sure the `next_cell` value is set.
-            next_cell = &mut unsafe { next_cell.get_mut().unwrap_unchecked() }.next;
-        }
-        None
     }
 }
 
@@ -232,5 +251,111 @@ impl<T, A: Allocator> Cons<T, A> {
             next: OnceCell::new(),
             val,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let list = OnceList::<i32>::new();
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.iter().next(), None);
+    }
+
+    #[test]
+    fn test_default() {
+        let list = OnceList::<i32>::default();
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.iter().next(), None);
+    }
+
+    #[test]
+    fn test_push() {
+        let list = OnceList::new();
+        let val = list.push(42);
+        assert_eq!(val, &42);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&42]);
+
+        list.push(100);
+        list.push(3);
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&42, &100, &3]);
+    }
+
+    #[test]
+    fn test_from_iter() {
+        let list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &2, &3]);
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        list.extend([4, 5, 6]);
+        assert_eq!(list.len(), 6);
+        assert_eq!(
+            list.iter().collect::<Vec<_>>(),
+            vec![&1, &2, &3, &4, &5, &6]
+        );
+    }
+
+    #[test]
+    fn test_clear() {
+        let mut list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        list.clear();
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.iter().next(), None);
+    }
+
+    #[test]
+    fn test_first_last() {
+        let empty_list = OnceList::<i32>::new();
+        assert_eq!(empty_list.first(), None);
+        assert_eq!(empty_list.last(), None);
+
+        let single_list = [42].into_iter().collect::<OnceList<_>>();
+        assert_eq!(single_list.first(), Some(&42));
+        assert_eq!(single_list.last(), Some(&42));
+
+        let multiple_list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        assert_eq!(multiple_list.first(), Some(&1));
+        assert_eq!(multiple_list.last(), Some(&3));
+    }
+
+    #[test]
+    fn test_contains() {
+        let list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        assert!(list.contains(&1));
+        assert!(list.contains(&2));
+        assert!(list.contains(&3));
+        assert!(!list.contains(&0));
+        assert!(!list.contains(&4));
+
+        let empty_list = OnceList::<i32>::new();
+        assert!(!empty_list.contains(&1));
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        assert_eq!(list.remove(|&v| v == 2), Some(2));
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &3]);
+
+        assert_eq!(list.remove(|&v| v == 0), None);
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &3]);
+
+        assert_eq!(list.remove(|&v| v == 1), Some(1));
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&3]);
+
+        assert_eq!(list.remove(|&v| v == 3), Some(3));
+        assert!(list.is_empty());
     }
 }

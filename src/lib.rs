@@ -22,7 +22,6 @@ use ::std::ops::DerefMut;
 
 #[cfg(not(feature = "sync"))]
 use ::std::cell::OnceCell;
-use ::std::sync::Once;
 #[cfg(feature = "sync")]
 use ::std::sync::OnceLock as OnceCell;
 
@@ -193,25 +192,6 @@ impl<T> Default for OnceList<T, Global> {
 impl<T: Debug, A: Allocator> Debug for OnceList<T, A> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
-    }
-}
-
-pub struct Iter<T, A: Allocator>(OnceCell<Box<Cons<T, A>, A>>);
-impl<T, A: Allocator> IntoIterator for OnceList<T, A> {
-    type Item = T;
-    type IntoIter = Iter<T, A>;
-    fn into_iter(self) -> Self::IntoIter {
-        Iter(self.head)
-    }
-}
-
-impl<T, A: Allocator> Iterator for Iter<T, A> {
-    type Item = T;
-    fn next(&mut self) -> Option<Self::Item> {
-        let cons = Box::into_inner(self.0.take()?);
-        let val = cons.val;
-        self.0 = cons.next;
-        Some(val)
     }
 }
 

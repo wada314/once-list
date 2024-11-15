@@ -18,9 +18,11 @@
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
 use ::std::fmt::Debug;
+use ::std::ops::DerefMut;
 
 #[cfg(not(feature = "sync"))]
 use ::std::cell::OnceCell;
+use ::std::sync::Once;
 #[cfg(feature = "sync")]
 use ::std::sync::OnceLock as OnceCell;
 
@@ -61,13 +63,32 @@ impl<T, A: Allocator> OnceList<T, A> {
         self.head.get().map(|c| &c.val)
     }
 
+    /// Returns a mutable reference to the first value, if it exists.
+    pub fn first_mut(&mut self) -> Option<&mut T> {
+        self.head.get_mut().map(|c| &mut c.val)
+    }
+
     /// Returns a last value, if it exists.
+    /// This method is O(n).
     pub fn last(&self) -> Option<&T> {
         let mut last_opt = None;
         let mut next_cell = &self.head;
         while let Some(next_box) = next_cell.get() {
             last_opt = Some(&next_box.val);
             next_cell = &next_box.next;
+        }
+        last_opt
+    }
+
+    /// Returns a mutable reference to the last value, if it exists.
+    /// This method is O(n).
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        let mut last_opt = None;
+        let mut next_cell = &mut self.head;
+        while let Some(next_box) = next_cell.get_mut() {
+            let next_cons = Box::deref_mut(next_box);
+            last_opt = Some(&mut next_cons.val);
+            next_cell = &mut next_cons.next;
         }
         last_opt
     }
@@ -82,6 +103,26 @@ impl<T, A: Allocator> OnceList<T, A> {
             }
             None => None,
         })
+    }
+
+    /// Returns an iterator over the `&mut T` references in the list.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        struct Iter<'a, T, A: Allocator> {
+            next_cell: &'a mut OnceCell<Box<Cons<T, A>, A>>,
+        }
+        impl<'a, T, A: Allocator> Iterator for Iter<'a, T, A> {
+            type Item = &'a mut T;
+            fn next(&mut self) -> Option<Self::Item> {
+                let next_box = self.next_cell.get_mut()?;
+                // Need to cast the `self` lifetime to `&'a` to update the `Self::Item`.
+                let next_cons = unsafe { &mut *::std::ptr::from_mut(next_box.as_mut()) };
+                self.next_cell = &mut next_cons.next;
+                Some(&mut next_cons.val)
+            }
+        }
+        Iter {
+            next_cell: &mut self.head,
+        }
     }
 
     /// Clears the list, dropping all values.

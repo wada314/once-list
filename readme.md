@@ -16,12 +16,12 @@ use once_list2::OnceList;
 // Create a new empty list. Note that the variable is immutable.
 let list = OnceList::<i32>::new();
 
-// Or you can create a list from an iterator.
-let list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+// You can push values to the list without the need for mutability.
+list.push(1);
+list.push(2);
 
-// You can push values to the list.
-list.push(4);
-list.push(5);
+// Or you can push multiple values at once.
+list.extend([3, 4, 5]);
 
 // You can iterate over the list.
 assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);

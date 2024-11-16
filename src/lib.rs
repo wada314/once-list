@@ -209,6 +209,19 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
             }
         }
     }
+
+    /// An almost same method with the [`std::iter::Extend::extend`],
+    /// though this method takes `&self` instead of `&mut self`.
+    ///
+    /// [`std::iter::Extend::extend`]: https://doc.rust-lang.org/std/iter/trait.Extend.html#tymethod.extend
+    pub fn extend<U: IntoIterator<Item = T>>(&self, iter: U) {
+        let mut last_cell = self.last_cell();
+        let alloc = self.allocator();
+        for val in iter {
+            let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
+            last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
+        }
+    }
 }
 
 impl<T> Default for OnceList<T, Global> {
@@ -236,13 +249,10 @@ impl<T> FromIterator<T> for OnceList<T, Global> {
 }
 
 impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
+    /// Due to the definition of the `Extend` trait, this method takes `&mut self`.
+    /// Use the [`OnceList::extend`] method instead if you want to use `&self`.
     fn extend<U: IntoIterator<Item = T>>(&mut self, iter: U) {
-        let mut last_cell = self.last_cell();
-        let alloc = self.allocator();
-        for val in iter {
-            let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
-            last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
-        }
+        <OnceList<T, A>>::extend(self, iter);
     }
 }
 

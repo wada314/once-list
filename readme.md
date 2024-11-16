@@ -35,3 +35,11 @@ assert_eq!(removed, Some(2));
 assert_eq!(list_mut.iter().copied().collect::<Vec<_>>(), vec![1, 3, 4, 5]);
 
 ```
+
+# Features
+
+By default, none of the features are enabled.
+
+- `nightly`: Enables the nightly-only features. Particularly, uses the `allocator_api` std unstable feature. Note that even without this feature, this crate still supports the allocators thanks to the [`allocator_api2`](https://crates.io/crates/allocator-api2) crate.
+
+- `sync`: This library internally uses `std::cell::OnceCell` which is not thread-safe. When you enable this feature, this library uses the thread-safe `std::sync::OnceLock` instead.

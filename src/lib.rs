@@ -248,6 +248,26 @@ impl<T> FromIterator<T> for OnceList<T, Global> {
     }
 }
 
+impl<T, A: Allocator> IntoIterator for OnceList<T, A> {
+    type Item = T;
+    type IntoIter = IntoIter<T, A>;
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter(self.head)
+    }
+}
+
+pub struct IntoIter<T, A: Allocator>(OnceCell<Box<Cons<T, A>, A>>);
+
+impl<T, A: Allocator> Iterator for IntoIter<T, A> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_cell = self.0.take()?;
+        let next_cons = Box::into_inner(next_cell);
+        self.0 = next_cons.next;
+        Some(next_cons.val)
+    }
+}
+
 impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
     /// Due to the definition of the `Extend` trait, this method takes `&mut self`.
     /// Use the [`OnceList::extend`] method instead if you want to use `&self`.
@@ -291,30 +311,27 @@ mod tests {
         let val = list.push(42);
         assert_eq!(val, &42);
         assert_eq!(list.len(), 1);
-        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&42]);
+        assert_eq!(list.clone().into_iter().collect::<Vec<_>>(), vec![42]);
 
         list.push(100);
         list.push(3);
         assert_eq!(list.len(), 3);
-        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&42, &100, &3]);
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![42, 100, 3]);
     }
 
     #[test]
     fn test_from_iter() {
         let list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
         assert_eq!(list.len(), 3);
-        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &2, &3]);
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
     }
 
     #[test]
     fn test_extend() {
-        let mut list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        let list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
         list.extend([4, 5, 6]);
         assert_eq!(list.len(), 6);
-        assert_eq!(
-            list.iter().collect::<Vec<_>>(),
-            vec![&1, &2, &3, &4, &5, &6]
-        );
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![1, 2, 3, 4, 5, 6]);
     }
 
     #[test]

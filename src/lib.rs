@@ -168,8 +168,10 @@ impl<T, A: Allocator> OnceList<T, A> {
         P: FnMut(&T) -> bool,
     {
         let mut next_cell = &mut self.head;
-        while let Some(next_box) = next_cell.take() {
-            if pred(&next_box.val) {
+        while let Some(next_ref) = next_cell.get() {
+            if pred(&next_ref.val) {
+                // Safe because we are sure the `next_cell` value is set.
+                let next_box = next_cell.take().unwrap();
                 let mut next_cons = Box::into_inner(next_box);
 
                 // reconnect the list
@@ -179,10 +181,8 @@ impl<T, A: Allocator> OnceList<T, A> {
 
                 return Some(next_cons.val);
             }
-
-            let _ = next_cell.set(next_box);
             // Safe because we are sure the `next_cell` value is set.
-            next_cell = &mut unsafe { next_cell.get_mut().unwrap_unchecked() }.next;
+            next_cell = &mut next_cell.get_mut().unwrap().next;
         }
         None
     }

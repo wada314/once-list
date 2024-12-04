@@ -2,6 +2,8 @@
 name = "once-list2"
 version = "0.1.0"
 edition = "2021"
+description = "A single linked list which is backed by `OnceCell`. You can append the value to the non-mutable `OnceList`."
+license-file = "LICENSE"
 
 [dependencies]
 allocator-api2 = "0.2.21"

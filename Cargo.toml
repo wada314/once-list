@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-allocator-api2 = { path = "../allocator-api2" }
+allocator-api2 = "0.2.21"
 
 [features]
 default = []

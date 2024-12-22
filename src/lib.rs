@@ -29,18 +29,18 @@ use ::std::sync::OnceLock as OnceCell;
 /// A single linked list which behaves like [`std::cell::OnceCell`], but for multiple values.
 /// See the crate document for the examples.
 #[derive(Clone)]
-pub struct OnceList<T, A: Allocator = Global> {
+pub struct OnceList<T: ?Sized, A: Allocator = Global> {
     head: OnceCell<Box<Cons<T, A>, A>>,
     alloc: A,
 }
 
 #[derive(Clone)]
-struct Cons<T, A: Allocator> {
+struct Cons<T: ?Sized, A: Allocator> {
     next: OnceCell<Box<Cons<T, A>, A>>,
     val: T,
 }
 
-impl<T> OnceList<T, Global> {
+impl<T: ?Sized> OnceList<T, Global> {
     /// Creates a new empty `OnceList`. This method does not allocate.
     pub fn new() -> Self {
         Self {
@@ -49,7 +49,7 @@ impl<T> OnceList<T, Global> {
         }
     }
 }
-impl<T, A: Allocator> OnceList<T, A> {
+impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     /// Creates a new empty `OnceList` with the given allocator. This method does not allocate.
     pub fn new_in(alloc: A) -> Self {
         Self {
@@ -133,10 +133,10 @@ impl<T, A: Allocator> OnceList<T, A> {
 
     /// Returns an iterator over the `&mut T` references in the list.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        struct Iter<'a, T, A: Allocator> {
+        struct Iter<'a, T: ?Sized, A: Allocator> {
             next_cell: &'a mut OnceCell<Box<Cons<T, A>, A>>,
         }
-        impl<'a, T, A: Allocator> Iterator for Iter<'a, T, A> {
+        impl<'a, T: ?Sized, A: Allocator> Iterator for Iter<'a, T, A> {
             type Item = &'a mut T;
             fn next(&mut self) -> Option<Self::Item> {
                 let next_box = self.next_cell.get_mut()?;
@@ -160,7 +160,9 @@ impl<T, A: Allocator> OnceList<T, A> {
     pub fn allocator(&self) -> &A {
         &self.alloc
     }
+}
 
+impl<T, A: Allocator> OnceList<T, A> {
     /// Find a first value in the list matches the predicate, remove that item from the list,
     /// and then returns that value.
     pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
@@ -224,13 +226,13 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
     }
 }
 
-impl<T> Default for OnceList<T, Global> {
+impl<T: ?Sized> Default for OnceList<T, Global> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: Debug, A: Allocator> Debug for OnceList<T, A> {
+impl<T: ?Sized + Debug, A: Allocator> Debug for OnceList<T, A> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }

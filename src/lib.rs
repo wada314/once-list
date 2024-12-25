@@ -497,16 +497,49 @@ mod tests {
 
     #[test]
     #[cfg(feature = "nightly")]
-    fn test_unsized_push() {
+    fn test_unsized_slice_push() {
         let list: OnceList<[i32]> = OnceList::new();
         let first = list.push_unsized([1]);
         let second = list.push_unsized([2, 3]);
         assert_eq!(first, &[1]);
         assert_eq!(second, &[2, 3]);
 
-        let first = list.first().unwrap();
-        let second = list.last().unwrap();
-        assert_eq!(first, &[1]);
-        assert_eq!(second, &[2, 3]);
+        assert_eq!(list.iter().nth(0), Some(&[1] as &[i32]));
+        assert_eq!(list.iter().nth(1), Some(&[2, 3] as &[i32]));
+    }
+
+    #[test]
+    #[cfg(feature = "nightly")]
+    fn test_unsized_dyn_push() {
+        let list: OnceList<dyn ToString> = OnceList::new();
+        let first = list.push_unsized(1);
+        let second = list.push_unsized("hello");
+        assert_eq!(first.to_string(), "1");
+        assert_eq!(second.to_string(), "hello");
+
+        assert_eq!(
+            list.iter().nth(0).map(<dyn ToString>::to_string),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            list.iter().nth(1).map(<dyn ToString>::to_string),
+            Some("hello".to_string())
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "nightly")]
+    fn test_unsized_slice_remove() {
+        let list = OnceList::<[i32]>::new();
+        list.push_unsized([1]);
+        list.push_unsized([2, 3]);
+        list.push_unsized([4, 5, 6]);
+
+        let mut list = list;
+        let removed = list.remove_unsized(|s| s.len() == 2);
+        assert_eq!(removed, Some(Box::new([2, 3]) as Box<[i32]>));
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.iter().nth(0), Some(&[1] as &[i32]));
+        assert_eq!(list.iter().nth(1), Some(&[4, 5, 6] as &[i32]));
     }
 }

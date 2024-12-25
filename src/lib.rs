@@ -542,4 +542,26 @@ mod tests {
         assert_eq!(list.iter().nth(0), Some(&[1] as &[i32]));
         assert_eq!(list.iter().nth(1), Some(&[4, 5, 6] as &[i32]));
     }
+
+    #[test]
+    #[cfg(feature = "nightly")]
+    fn test_unsized_dyn_remove() {
+        let list = OnceList::<dyn ToString>::new();
+        list.push_unsized(1);
+        list.push_unsized("hello");
+        list.push_unsized(42);
+
+        let mut list = list;
+        let removed = list.remove_unsized(|s| s.to_string() == "hello");
+        assert_eq!(removed.map(|s| s.to_string()), Some("hello".to_string()));
+        assert_eq!(list.len(), 2);
+        assert_eq!(
+            list.iter().nth(0).map(|s| s.to_string()),
+            Some("1".to_string())
+        );
+        assert_eq!(
+            list.iter().nth(1).map(|s| s.to_string()),
+            Some("42".to_string())
+        );
+    }
 }

@@ -17,7 +17,9 @@
 #![cfg_attr(feature = "nightly", feature(box_into_inner))]
 #![cfg_attr(feature = "nightly", feature(unsize))]
 #![cfg_attr(feature = "nightly", feature(coerce_unsized))]
+#![cfg_attr(feature = "nightly", feature(ptr_metadata))]
 
+use ::allocator_api2::alloc;
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
 use ::std::fmt::Debug;
@@ -178,19 +180,69 @@ impl<T, A: Allocator> OnceList<T, A> {
     where
         P: FnMut(&T) -> bool,
     {
+        self.remove_inner(&mut pred, |boxed_cons| Box::into_inner(boxed_cons).val)
+    }
+}
+
+impl<T: ?Sized, A: Allocator> OnceList<T, A> {
+    #[cfg(feature = "nightly")]
+    pub fn remove_unsized<P>(&mut self, pred: P) -> Option<Box<T, A>>
+    where
+        P: FnMut(&T) -> bool,
+    {
+        use ::std::ptr::{self, NonNull};
+
+        self.remove_inner(pred, |boxed_cons| {
+            let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&boxed_cons);
+            let layout = alloc::Layout::for_value(&boxed_cons.val);
+            let metadata = ptr::metadata(&boxed_cons.val);
+            let (raw_cons, alloc) = Box::into_raw_with_allocator(boxed_cons);
+            let dst = alloc.allocate(layout).unwrap();
+
+            // Make sure to drop the `cons`'s unused fields.
+            let Cons { next, val } = unsafe { &*raw_cons };
+            let _ = unsafe { ::std::ptr::read(next) };
+            let raw_src = val as *const T;
+
+            // Do memcpy.
+            unsafe {
+                ::std::ptr::copy_nonoverlapping(
+                    raw_src.cast::<u8>(),
+                    dst.cast::<u8>().as_ptr(),
+                    layout.size(),
+                );
+            }
+
+            // free the `cons`'s memory. Not `drop` because we already dropped the fields.
+            unsafe {
+                alloc.deallocate(NonNull::new(raw_cons).unwrap().cast(), cons_layout);
+            }
+
+            // Create a new fat pointer for dst by combining the thin pointer and the metadata.
+            let dst = NonNull::<T>::from_raw_parts(dst.cast::<u8>(), metadata);
+
+            unsafe { Box::from_non_null_in(dst, alloc) }
+        })
+    }
+}
+impl<T: ?Sized, A: Allocator> OnceList<T, A> {
+    fn remove_inner<P, F, U>(&mut self, mut pred: P, mut f: F) -> Option<U>
+    where
+        P: FnMut(&T) -> bool,
+        F: FnMut(Box<Cons<T, T, A>, A>) -> U,
+    {
         let mut next_cell = &mut self.head;
         while let Some(next_ref) = next_cell.get() {
             if pred(&next_ref.val) {
                 // Safe because we are sure the `next_cell` value is set.
-                let next_box = next_cell.take().unwrap();
-                let mut next_cons = Box::into_inner(next_box);
+                let mut next_box = next_cell.take().unwrap();
 
                 // reconnect the list
-                if let Some(next_next) = next_cons.next.take() {
+                if let Some(next_next) = next_box.next.take() {
                     let _ = next_cell.set(next_next);
                 }
 
-                return Some(next_cons.val);
+                return Some(f(next_box));
             }
             // Safe because we are sure the `next_cell` value is set.
             next_cell = &mut next_cell.get_mut().unwrap().next;

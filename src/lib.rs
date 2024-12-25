@@ -330,14 +330,14 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
     where
         U: Unsize<T>,
     {
-        let b: Box<Cons<U, T, A>, A> = Box::new_in(
+        // As mentioned in the [`Cons`]'s document, this unsized coercion cast is safe!
+        Box::<Cons<U, T, A>, A>::new_in(
             Cons::<U, T, A> {
                 next: OnceCell::new(),
                 val: val,
             },
             alloc,
-        );
-        b
+        )
     }
 }
 

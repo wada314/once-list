@@ -23,8 +23,6 @@ use ::allocator_api2::boxed::Box;
 use ::std::fmt::Debug;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
-#[cfg(feature = "nightly")]
-use ::std::ops::CoerceUnsized;
 use ::std::ops::DerefMut;
 
 #[cfg(not(feature = "sync"))]
@@ -36,14 +34,14 @@ use ::std::sync::OnceLock as OnceCell;
 /// See the crate document for the examples.
 #[derive(Clone)]
 pub struct OnceList<T: ?Sized, A: Allocator = Global> {
-    head: OnceCell<Box<Cons<T, A>, A>>,
+    head: OnceCell<Box<Cons<T, T, A>, A>>,
     alloc: A,
 }
 
 #[derive(Clone)]
-struct Cons<T: ?Sized, A: Allocator> {
-    next: OnceCell<Box<Cons<T, A>, A>>,
-    val: T,
+struct Cons<T: ?Sized, U: ?Sized, A: Allocator> {
+    next: OnceCell<Box<Cons<T, T, A>, A>>,
+    val: U,
 }
 
 impl<T: ?Sized> OnceList<T, Global> {
@@ -117,7 +115,7 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
         last_opt
     }
 
-    fn last_cell(&self) -> &OnceCell<Box<Cons<T, A>, A>> {
+    fn last_cell(&self) -> &OnceCell<Box<Cons<T, T, A>, A>> {
         let mut next_cell = &self.head;
         while let Some(next_box) = next_cell.get() {
             next_cell = &next_box.next;
@@ -140,7 +138,7 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     /// Returns an iterator over the `&mut T` references in the list.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         struct Iter<'a, T: ?Sized, A: Allocator> {
-            next_cell: &'a mut OnceCell<Box<Cons<T, A>, A>>,
+            next_cell: &'a mut OnceCell<Box<Cons<T, T, A>, A>>,
         }
         impl<'a, T: ?Sized, A: Allocator> Iterator for Iter<'a, T, A> {
             type Item = &'a mut T;
@@ -232,6 +230,29 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
     }
 }
 
+impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
+    #[cfg(feature = "nightly")]
+    pub fn push_unsized<U: Unsize<T>>(&self, val: U) -> &U {
+        let mut next_cell = &self.head;
+        let mut boxed_cons = Cons::new_boxed(val, self.alloc.clone());
+        loop {
+            match next_cell.set(boxed_cons) {
+                Ok(()) => {
+                    // Safe because we are sure the `next` value is set.
+                    let result_unsized = &unsafe { next_cell.get().unwrap_unchecked() }.val;
+                    // Safe because we are sure the `next`'s type is `U`.
+                    return unsafe { &*(result_unsized as *const T as *const U) };
+                }
+                Err(new_val_cons) => {
+                    // Safe because we are sure the `next` value is set.
+                    next_cell = &unsafe { next_cell.get().unwrap_unchecked() }.next;
+                    boxed_cons = new_val_cons;
+                }
+            }
+        }
+    }
+}
+
 impl<T: ?Sized> Default for OnceList<T, Global> {
     fn default() -> Self {
         Self::new()
@@ -264,7 +285,7 @@ impl<T, A: Allocator> IntoIterator for OnceList<T, A> {
     }
 }
 
-pub struct IntoIter<T, A: Allocator>(OnceCell<Box<Cons<T, A>, A>>);
+pub struct IntoIter<T, A: Allocator>(OnceCell<Box<Cons<T, T, A>, A>>);
 
 impl<T, A: Allocator> Iterator for IntoIter<T, A> {
     type Item = T;
@@ -284,8 +305,8 @@ impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
     }
 }
 
-impl<T, A: Allocator> Cons<T, A> {
-    fn new(val: T) -> Self {
+impl<T: ?Sized, U, A: Allocator> Cons<T, U, A> {
+    fn new(val: U) -> Self {
         Self {
             next: OnceCell::new(),
             val,
@@ -294,24 +315,19 @@ impl<T, A: Allocator> Cons<T, A> {
 }
 
 #[cfg(feature = "nightly")]
-impl<T: ?Sized, U: CoerceUnsized<T>, A: Allocator> CoerceUnsized<OnceList<T, A>>
-    for OnceList<U, A>
-{
-}
-
-#[cfg(feature = "nightly")]
-impl<T: ?Sized, A: Allocator> Cons<T, A> {
+impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
     fn new_boxed<U>(val: U, alloc: A) -> Box<Self, A>
     where
         U: Unsize<T>,
     {
-        Box::new_in(
-            Cons::<U, A> {
+        let b: Box<Cons<T, U, A>, A> = Box::new_in(
+            Cons::<T, U, A> {
                 next: OnceCell::new(),
                 val: val,
             },
             alloc,
-        ) as Box<Self, A>
+        );
+        b
     }
 }
 
@@ -415,5 +431,20 @@ mod tests {
 
         assert_eq!(list.remove(|&v| v == 3), Some(3));
         assert!(list.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "nightly")]
+    fn test_unsized_push() {
+        let list: OnceList<[i32]> = OnceList::new();
+        let first = list.push_unsized([1]);
+        let second = list.push_unsized([2, 3]);
+        assert_eq!(first, &[1]);
+        assert_eq!(second, &[2, 3]);
+
+        let first = list.first().unwrap();
+        let second = list.last().unwrap();
+        assert_eq!(first, &[1]);
+        assert_eq!(second, &[2, 3]);
     }
 }

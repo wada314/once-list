@@ -225,7 +225,9 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
         })
     }
 }
+
 impl<T: ?Sized, A: Allocator> OnceList<T, A> {
+    /// An inner implementeation for `remove` and `remove_unsized`.
     fn remove_inner<P, F, U>(&mut self, mut pred: P, mut f: F) -> Option<U>
     where
         P: FnMut(&T) -> bool,

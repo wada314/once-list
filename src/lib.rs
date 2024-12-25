@@ -38,10 +38,15 @@ pub struct OnceList<T: ?Sized, A: Allocator = Global> {
     alloc: A,
 }
 
+/// A single linked list node.
+///
+/// Type parameter `T` and `U` are essentially the same type, but for rust's unsized coercion
+/// feature, we need to separate them.
+/// Then we can safely cast `&Cons<SizedT, U, A>` into `&Cons<UnsizedT, U, A>`.
 #[derive(Clone)]
 struct Cons<T: ?Sized, U: ?Sized, A: Allocator> {
-    next: OnceCell<Box<Cons<T, T, A>, A>>,
-    val: U,
+    next: OnceCell<Box<Cons<U, U, A>, A>>,
+    val: T,
 }
 
 impl<T: ?Sized> OnceList<T, Global> {
@@ -231,6 +236,11 @@ impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
 }
 
 impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
+    /// An unsized version of the [`OnceList::push`] method.
+    ///
+    /// This method is available only on the nightly compiler.
+    ///
+    /// You can push a sized value to the list. For exaple, you can push `[i32; 3]` to the list of `[i32]`.
     #[cfg(feature = "nightly")]
     pub fn push_unsized<U: Unsize<T>>(&self, val: U) -> &U {
         let mut next_cell = &self.head;
@@ -305,8 +315,8 @@ impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
     }
 }
 
-impl<T: ?Sized, U, A: Allocator> Cons<T, U, A> {
-    fn new(val: U) -> Self {
+impl<T, U: ?Sized, A: Allocator> Cons<T, U, A> {
+    fn new(val: T) -> Self {
         Self {
             next: OnceCell::new(),
             val,
@@ -320,8 +330,8 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
     where
         U: Unsize<T>,
     {
-        let b: Box<Cons<T, U, A>, A> = Box::new_in(
-            Cons::<T, U, A> {
+        let b: Box<Cons<U, T, A>, A> = Box::new_in(
+            Cons::<U, T, A> {
                 next: OnceCell::new(),
                 val: val,
             },

@@ -15,10 +15,16 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(feature = "nightly", feature(allocator_api))]
 #![cfg_attr(feature = "nightly", feature(box_into_inner))]
+#![cfg_attr(feature = "nightly", feature(unsize))]
+#![cfg_attr(feature = "nightly", feature(coerce_unsized))]
 
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
 use ::std::fmt::Debug;
+#[cfg(feature = "nightly")]
+use ::std::marker::Unsize;
+#[cfg(feature = "nightly")]
+use ::std::ops::CoerceUnsized;
 use ::std::ops::DerefMut;
 
 #[cfg(not(feature = "sync"))]
@@ -284,6 +290,28 @@ impl<T, A: Allocator> Cons<T, A> {
             next: OnceCell::new(),
             val,
         }
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<T: ?Sized, U: CoerceUnsized<T>, A: Allocator> CoerceUnsized<OnceList<T, A>>
+    for OnceList<U, A>
+{
+}
+
+#[cfg(feature = "nightly")]
+impl<T: ?Sized, A: Allocator> Cons<T, A> {
+    fn new_boxed<U>(val: U, alloc: A) -> Box<Self, A>
+    where
+        U: Unsize<T>,
+    {
+        Box::new_in(
+            Cons::<U, A> {
+                next: OnceCell::new(),
+                val: val,
+            },
+            alloc,
+        ) as Box<Self, A>
     }
 }
 

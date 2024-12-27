@@ -25,6 +25,7 @@
 use ::allocator_api2::alloc;
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
+use ::std::any::Any;
 use ::std::fmt::Debug;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
@@ -404,6 +405,48 @@ impl<T, A: Allocator + Clone> OnceList<T, A> {
             let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
             last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
         }
+    }
+}
+
+impl<A: Allocator + Clone> OnceList<dyn Any, A> {
+    #[cfg(feature = "nightly")]
+    #[cfg_attr(feature = "nightly", doc(cfg(feature = "nightly")))]
+    /// Pushes an aribitrary value to the list, and returns the reference to that value.
+    ///
+    /// This method is an easy alias for the [`OnceList::push_unsized`] method with the `Any` trait.
+    pub fn push_any<T: Any>(&self, val: T) -> &T {
+        self.push_unsized(val)
+    }
+
+    /// Finds the first value in the list that is the same type as `T`, and returns the reference to that value.
+    pub fn find_by_type<T: Any>(&self) -> Option<&T> {
+        self.iter().find_map(|val| val.downcast_ref())
+    }
+
+    pub fn remove_by_type<T: Any>(&mut self) -> Option<T> {
+        self.remove_inner(
+            |v| v.is::<T>(),
+            |boxed_cons| {
+                let cons_layout = alloc::Layout::for_value::<Cons<_, _, _>>(&boxed_cons);
+                let (cons_ptr, alloc) = Box::into_non_null_with_allocator(boxed_cons);
+
+                let Cons {
+                    next: next_ref,
+                    val: val_any_ref,
+                } = unsafe { cons_ptr.as_ref() };
+                // drop the `next` field.
+                unsafe { ::std::ptr::read(next_ref) };
+
+                let val_ref = <dyn Any>::downcast_ref::<T>(val_any_ref).unwrap();
+                let val = unsafe { ::std::ptr::read(val_ref) };
+
+                unsafe {
+                    alloc.deallocate(cons_ptr.cast(), cons_layout);
+                }
+
+                val
+            },
+        )
     }
 }
 

@@ -192,39 +192,7 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     where
         P: FnMut(&T) -> bool,
     {
-        use ::std::ptr::{self, NonNull};
-
-        self.remove_inner(pred, |boxed_cons| {
-            let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&boxed_cons);
-            let layout = alloc::Layout::for_value(&boxed_cons.val);
-            let metadata = ptr::metadata(&boxed_cons.val);
-            let (raw_cons, alloc) = Box::into_raw_with_allocator(boxed_cons);
-            let dst = alloc.allocate(layout).unwrap();
-
-            // Make sure to drop the `cons`'s unused fields.
-            let Cons { next, val } = unsafe { &*raw_cons };
-            let _ = unsafe { ::std::ptr::read(next) };
-            let raw_src = val as *const T;
-
-            // Do memcpy.
-            unsafe {
-                ::std::ptr::copy_nonoverlapping(
-                    raw_src.cast::<u8>(),
-                    dst.cast::<u8>().as_ptr(),
-                    layout.size(),
-                );
-            }
-
-            // free the `cons`'s memory. Not `drop` because we already dropped the fields.
-            unsafe {
-                alloc.deallocate(NonNull::new(raw_cons).unwrap().cast(), cons_layout);
-            }
-
-            // Create a new fat pointer for dst by combining the thin pointer and the metadata.
-            let dst = NonNull::<T>::from_raw_parts(dst.cast::<u8>(), metadata);
-
-            unsafe { Box::from_non_null_in(dst, alloc) }
-        })
+        self.remove_inner(pred, |boxed_cons| boxed_cons.box_into_inner())
     }
 }
 
@@ -385,6 +353,40 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
             },
             alloc,
         )
+    }
+
+    fn box_into_inner(self: Box<Self, A>) -> Box<T, A> {
+        use ::std::ptr::{metadata, NonNull};
+
+        let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&self);
+        let layout = alloc::Layout::for_value::<T>(&self.val);
+        let metadata = metadata(&self.val);
+        let (raw_cons, alloc) = Box::into_raw_with_allocator(self);
+        let dst = alloc.allocate(layout).unwrap();
+
+        // Make sure to drop the `cons`'s unused fields.
+        let Cons { next, val } = unsafe { &*raw_cons };
+        let _ = unsafe { ::std::ptr::read(next) };
+        let raw_src = val as *const T;
+
+        // Do memcpy.
+        unsafe {
+            ::std::ptr::copy_nonoverlapping(
+                raw_src.cast::<u8>(),
+                dst.cast::<u8>().as_ptr(),
+                layout.size(),
+            );
+        }
+
+        // free the `cons`'s memory. Not `drop` because we already dropped the fields.
+        unsafe {
+            alloc.deallocate(NonNull::new(raw_cons).unwrap().cast(), cons_layout);
+        }
+
+        // Create a new fat pointer for dst by combining the thin pointer and the metadata.
+        let dst = NonNull::<T>::from_raw_parts(dst.cast::<u8>(), metadata);
+
+        unsafe { Box::from_non_null_in(dst, alloc) }
     }
 }
 

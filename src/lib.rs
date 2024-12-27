@@ -456,7 +456,7 @@ impl<T> OnceCellExt<T> for OnceCell<T> {
 #[cfg(feature = "nightly")]
 impl<T> OnceCellExt<T> for OnceCell<T> {
     fn try_insert2(&self, value: T) -> Result<&T, (&T, T)> {
-        <OnceCell<_>>::try_insert(self, value)
+        self.try_insert(value)
     }
 }
 

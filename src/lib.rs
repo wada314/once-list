@@ -35,7 +35,79 @@ use ::std::cell::OnceCell;
 use ::std::sync::OnceLock as OnceCell;
 
 /// A single linked list which behaves like [`std::cell::OnceCell`], but for multiple values.
-/// See the crate document for the examples.
+///
+/// # Usage
+///
+/// A simple example:
+///
+/// ```rust
+/// use once_list2::OnceList;
+///
+/// // Create a new empty list. Note that the variable is immutable.
+/// let list = OnceList::<i32>::new();
+///
+/// // You can push values to the list without the need for mutability.
+/// list.push(1);
+/// list.push(2);
+///
+/// // Or you can push multiple values at once.
+/// list.extend([3, 4, 5]);
+///
+/// // You can iterate over the list.
+/// assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
+///
+/// // Some methods are mutable only.
+/// let mut list_mut = list;
+///
+/// // You can remove (take) a value from the list.
+/// let removed = list_mut.remove(|&x| x % 2 == 0);
+/// assert_eq!(removed, Some(2));
+/// assert_eq!(list_mut.iter().copied().collect::<Vec<_>>(), vec![1, 3, 4, 5]);
+/// ```
+///
+/// # (Almost nightly rustc only) Unsized types support
+///
+/// You can use the [unsized types] like `str`, `[u8]` or `dyn Display` as the value type of the `OnceList`.
+///
+/// Though you can use this feature without the nightly rustc compiler, you can not push or extend the values to the list without the nightly compiler and the `nightly` feature enabled. i.e. You can only create an empty list, that's all.
+///
+/// In the nightly compiler and with the `nightly` feature enabled, the additional methods like `push_unsized`, `remove_unsized_as` become available:
+///
+/// ```rust
+/// # #[cfg(not(feature = "nightly"))]
+/// # fn main() {}
+/// # #[cfg(feature = "nightly")]
+/// # fn main() {
+/// // This code only works with the nightly compiler and the `nightly` feature enabled.
+///
+/// use once_list2::OnceList;
+///
+/// // Creating a `OnceList` for `[i32]`, the unsized type.
+/// let list = OnceList::<[i32]>::new();
+///
+/// list.push_unsized([1] /* A sized array type, `[i32; 1]`, can be coerced into [i32].*/);
+/// list.push_unsized([2, 3] /* Same for `[i32; 2] type. */);
+///
+/// // The normal methods like `iter` are available because it returns a reference to the value.
+/// assert_eq!(list.iter().nth(0).unwrap(), &[1]);
+/// assert_eq!(list.iter().nth(1).unwrap(), &[2, 3]);
+///
+/// let mut list_mut = list;
+///
+/// // `remove_unsized_as` method allows you to check the unsized value type and remove it.
+/// let removed: Option<[i32; 2]> = unsafe {
+///     list_mut.remove_unsized_as(|x| if x.len() == 2 {
+///         Some(x.try_into().unwrap())
+///     } else {
+///         None
+///     })
+/// };
+/// // The removed value is an array, not a slice!
+/// assert_eq!(removed, Some([2, 3]));
+/// # }
+/// ```
+/// [unsized types]: https://doc.rust-lang.org/book/ch19-04-advanced-types.html#dynamically-sized-types-and-the-sized-trait
+///
 #[derive(Clone)]
 pub struct OnceList<T: ?Sized, A: Allocator = Global> {
     head: OnceCell<Box<Cons<T, T, A>, A>>,

@@ -32,6 +32,7 @@ use ::std::ops::DerefMut;
 
 #[cfg(not(feature = "sync"))]
 use ::std::cell::OnceCell;
+use ::std::ptr::NonNull;
 #[cfg(feature = "sync")]
 use ::std::sync::OnceLock as OnceCell;
 
@@ -436,12 +437,12 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
             |v| v.is::<T>(),
             |boxed_cons| {
                 let cons_layout = alloc::Layout::for_value::<Cons<_, _, _>>(&boxed_cons);
-                let (cons_ptr, alloc) = Box::into_non_null(boxed_cons);
+                let (cons_ptr, alloc) = Box::into_raw_with_allocator(boxed_cons);
 
                 let Cons {
                     next: next_ref,
                     val: val_any_ref,
-                } = unsafe { cons_ptr.as_ref() };
+                } = unsafe { &*cons_ptr };
                 // drop the `next` field.
                 unsafe { ::std::ptr::read(next_ref) };
 
@@ -449,7 +450,7 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
                 let val = unsafe { ::std::ptr::read(val_ref) };
 
                 unsafe {
-                    alloc.deallocate(cons_ptr.cast(), cons_layout);
+                    alloc.deallocate(NonNull::new_unchecked(cons_ptr as *mut u8), cons_layout);
                 }
 
                 val

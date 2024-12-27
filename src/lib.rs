@@ -290,6 +290,7 @@ impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
         self.push_inner(boxed_cons, |c| unsafe { &*(c as *const T as *const U) })
     }
 
+    /// An inner implementation for the `push` and `push_unsized` methods.
     fn push_inner<F, U>(&self, mut new_cons: Box<Cons<T, T, A>, A>, f: F) -> &U
     where
         F: FnOnce(&T) -> &U,

@@ -409,13 +409,13 @@ impl<T, A: Allocator + Clone> OnceList<T, A> {
 }
 
 impl<A: Allocator + Clone> OnceList<dyn Any, A> {
-    #[cfg(feature = "nightly")]
-    #[cfg_attr(feature = "nightly", doc(cfg(feature = "nightly")))]
     /// Pushes an aribitrary value to the list, and returns the reference to that value.
-    ///
-    /// This method is an easy alias for the [`OnceList::push_unsized`] method with the `Any` trait.
     pub fn push_any<T: Any>(&self, val: T) -> &T {
-        self.push_unsized(val)
+        self.push_inner(
+            Box::new_in(Cons::<T, dyn Any, A>::new(val), A::clone(&self.alloc)),
+            // Safe because we know the given value is type `T`.
+            |c| c.downcast_ref::<T>().unwrap(),
+        )
     }
 
     /// Finds the first value in the list that is the same type as `T`, and returns the reference to that value.
@@ -423,6 +423,7 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
         self.iter().find_map(|val| val.downcast_ref())
     }
 
+    /// Removes the first value in the list that is the same type as `T`, and returns the value.
     pub fn remove_by_type<T: Any>(&mut self) -> Option<T> {
         self.remove_inner(
             |v| v.is::<T>(),

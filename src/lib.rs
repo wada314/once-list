@@ -70,9 +70,12 @@ use ::std::sync::OnceLock as OnceCell;
 ///
 /// You can use the [unsized types] like `str`, `[u8]` or `dyn Display` as the value type of the `OnceList`.
 ///
-/// Though you can use this feature without the nightly rustc compiler, you can not push or extend the values to the list without the nightly compiler and the `nightly` feature enabled. i.e. You can only create an empty list, that's all.
+/// Though you can use this feature without the nightly rustc compiler, you can not push or extend
+/// the values to the list without the nightly compiler nor without the `nightly` feature enabled.
+/// In that case you can only create an empty list, that's all.
 ///
-/// In the nightly compiler and with the `nightly` feature enabled, the additional methods like `push_unsized`, `remove_unsized_as` become available:
+/// In the nightly compiler and with the `nightly` feature
+/// enabled, the additional methods like `push_unsized`, `remove_unsized_as` become available:
 ///
 /// ```rust
 /// # #[cfg(not(feature = "nightly"))]

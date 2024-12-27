@@ -21,7 +21,6 @@
 #![cfg_attr(feature = "nightly", feature(ptr_metadata))]
 #![cfg_attr(feature = "nightly", feature(unsize))]
 
-#[cfg(feature = "nightly")]
 use ::allocator_api2::alloc;
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
@@ -411,8 +410,16 @@ impl<T, A: Allocator + Clone> OnceList<T, A> {
 impl<A: Allocator + Clone> OnceList<dyn Any, A> {
     /// Pushes an aribitrary value to the list, and returns the reference to that value.
     pub fn push_any<T: Any>(&self, val: T) -> &T {
+        let sized_box = Box::new_in(Cons::<T, dyn Any, A>::new(val), A::clone(&self.alloc));
+        // Because we are using the non-standard `Box`, we need to manually do the unsized coercions...
+        let unsized_box = unsafe {
+            let (sized_ptr, alloc) = Box::into_raw_with_allocator(sized_box);
+            // Pointer unsized corecion!
+            let unsized_ptr: *mut Cons<dyn Any, dyn Any, A> = sized_ptr;
+            Box::from_raw_in(unsized_ptr, alloc)
+        };
         self.push_inner(
-            Box::new_in(Cons::<T, dyn Any, A>::new(val), A::clone(&self.alloc)),
+            unsized_box,
             // Safe because we know the given value is type `T`.
             |c| c.downcast_ref::<T>().unwrap(),
         )
@@ -429,7 +436,7 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
             |v| v.is::<T>(),
             |boxed_cons| {
                 let cons_layout = alloc::Layout::for_value::<Cons<_, _, _>>(&boxed_cons);
-                let (cons_ptr, alloc) = Box::into_non_null_with_allocator(boxed_cons);
+                let (cons_ptr, alloc) = Box::into_non_null(boxed_cons);
 
                 let Cons {
                     next: next_ref,

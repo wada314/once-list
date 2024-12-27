@@ -1,3 +1,5 @@
+[![Crates.io Version](https://img.shields.io/crates/v/once_list2)](https://crates.io/crates/once-list2)
+[![docs.rs](https://img.shields.io/docsrs/once-list2)](https://docs.rs/once-list2/latest/once_list2/)
 
 This library is a natural extension of the [`std::cell::OnceCell`](https://doc.rust-lang.org/std/cell/struct.OnceCell.html) (or its original crate [`once_cell`](https://crates.io/crates/once_cell)) library. This library provides a single-linked list `OnceList` type that allows you to store multiple values in a single `OnceList` instance even without the need for the mutability.
 

@@ -13,6 +13,6 @@ By default, none of the features are enabled.
 - `nightly`: Enables the nightly-only features.
 
   - Uses the `allocator_api` std unstable feature. Note that even without this feature, this crate still supports the allocators thanks to the [`allocator_api2`](https://crates.io/crates/allocator-api2) crate.
-  - Supports the special methods for the unsized value types. See the "Unsized types support" section for more details.
+  - Supports the special methods for the unsized value types. See the doc of `OnceCell` for more details.
 
 - `sync`: This library internally uses `std::cell::OnceCell` which is not thread-safe. When you enable this feature, this library uses the thread-safe `std::sync::OnceLock` instead.

@@ -188,11 +188,60 @@ impl<T, A: Allocator> OnceList<T, A> {
 
 impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     #[cfg(feature = "nightly")]
-    pub fn remove_unsized<P>(&mut self, pred: P) -> Option<Box<T, A>>
+    pub fn remove_into_box<P>(&mut self, pred: P) -> Option<Box<T, A>>
     where
         P: FnMut(&T) -> bool,
     {
-        self.remove_inner(pred, |boxed_cons| boxed_cons.box_into_inner())
+        self.remove_inner(pred, |boxed_cons| boxed_cons.box_into_inner_box())
+    }
+
+    /// Removes the first value in the list that matches the predicate, and returns the value.
+    ///
+    /// The predicate function `pred` should return `Some(&U)` if the value is found,
+    /// and the returned reference `&U` must be the same address as the value given in the `pred`.
+    ///
+    /// # Safety
+    /// This method is unsafe because it requires the predicate to return a reference to the same address as the value.
+    #[cfg(feature = "nightly")]
+    pub unsafe fn remove_unsized_as<U, P>(&mut self, mut pred: P) -> Option<U>
+    where
+        P: FnMut(&T) -> Option<&U>,
+    {
+        let found_sized_ptr: OnceCell<*const U> = OnceCell::new();
+        self.remove_inner(
+            |val| {
+                if let Some(val) = pred(val) {
+                    // We only set the value once, so this is safe.
+                    found_sized_ptr.set(val as *const U).unwrap();
+                    true
+                } else {
+                    false
+                }
+            },
+            |boxed_cons| -> U {
+                // Given the boxed cons with the unsized value type `T`,
+                // and returns the sized type value `U` by value (i.e. out of the box).
+
+                // We are sure the `found_sized_ptr` is set.
+                let found_sized_ptr: *const U = *found_sized_ptr.get().unwrap();
+
+                let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&boxed_cons);
+                let (cons_ptr, alloc) = Box::into_non_null_with_allocator(boxed_cons);
+                let val_ptr = &unsafe { cons_ptr.as_ref() }.val as *const T;
+
+                // Double check the ptr returned by the `pred` is the same as the pointer we extracted from the cons.
+                debug_assert_eq!(val_ptr as *const U, found_sized_ptr);
+
+                // Load (memcpy) the value into the output variable.
+                let result = unsafe { ::std::ptr::read(val_ptr as *const U) };
+
+                // Free the cons memory.
+                unsafe { alloc.deallocate(cons_ptr.cast(), cons_layout) };
+
+                // Return. Safe because we set the value just above.
+                result
+            },
+        )
     }
 }
 
@@ -355,7 +404,7 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
         )
     }
 
-    fn box_into_inner(self: Box<Self, A>) -> Box<T, A> {
+    fn box_into_inner_box(self: Box<Self, A>) -> Box<T, A> {
         use ::std::ptr::{metadata, NonNull};
 
         let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&self);
@@ -547,14 +596,14 @@ mod tests {
 
     #[test]
     #[cfg(feature = "nightly")]
-    fn test_unsized_slice_remove() {
+    fn test_unsized_slice_remove_into_box() {
         let list = OnceList::<[i32]>::new();
         list.push_unsized([1]);
         list.push_unsized([2, 3]);
         list.push_unsized([4, 5, 6]);
 
         let mut list = list;
-        let removed = list.remove_unsized(|s| s.len() == 2);
+        let removed = list.remove_into_box(|s| s.len() == 2);
         assert_eq!(removed, Some(Box::new([2, 3]) as Box<[i32]>));
         assert_eq!(list.len(), 2);
         assert_eq!(list.iter().nth(0), Some(&[1] as &[i32]));
@@ -563,14 +612,14 @@ mod tests {
 
     #[test]
     #[cfg(feature = "nightly")]
-    fn test_unsized_dyn_remove() {
+    fn test_unsized_dyn_remove_into_box() {
         let list = OnceList::<dyn ToString>::new();
         list.push_unsized(1);
         list.push_unsized("hello");
         list.push_unsized(42);
 
         let mut list = list;
-        let removed = list.remove_unsized(|s| s.to_string() == "hello");
+        let removed = list.remove_into_box(|s| s.to_string() == "hello");
         assert_eq!(removed.map(|s| s.to_string()), Some("hello".to_string()));
         assert_eq!(list.len(), 2);
         assert_eq!(
@@ -581,5 +630,21 @@ mod tests {
             list.iter().nth(1).map(|s| s.to_string()),
             Some("42".to_string())
         );
+    }
+
+    #[test]
+    #[cfg(feature = "nightly")]
+    fn test_unsized_slice_remove_as() {
+        let list = OnceList::<[i32]>::new();
+        list.push_unsized([1]);
+        list.push_unsized([2, 3]);
+        list.push_unsized([4, 5, 6]);
+
+        let mut list = list;
+        let removed: Option<[i32; 2]> = unsafe { list.remove_unsized_as(|s| s.try_into().ok()) };
+        assert_eq!(removed, Some([2, 3]));
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.iter().nth(0), Some(&[1] as &[i32]));
+        assert_eq!(list.iter().nth(1), Some(&[4, 5, 6] as &[i32]));
     }
 }

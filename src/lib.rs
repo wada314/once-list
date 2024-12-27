@@ -15,10 +15,12 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(feature = "nightly", feature(allocator_api))]
 #![cfg_attr(feature = "nightly", feature(box_into_inner))]
-#![cfg_attr(feature = "nightly", feature(unsize))]
 #![cfg_attr(feature = "nightly", feature(coerce_unsized))]
+#![cfg_attr(feature = "nightly", feature(once_cell_try_insert))]
 #![cfg_attr(feature = "nightly", feature(ptr_metadata))]
+#![cfg_attr(feature = "nightly", feature(unsize))]
 
+#[cfg(feature = "nightly")]
 use ::allocator_api2::alloc;
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
@@ -253,26 +255,13 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 }
 
-impl<T: Sized, A: Allocator + Clone> OnceList<T, A> {
+impl<T, A: Allocator + Clone> OnceList<T, A> {
     /// Appends a value to the list, and returns the reference to that value.
     ///
     /// Note that this method takes `&self`, not `&mut self`.
     pub fn push(&self, val: T) -> &T {
-        let mut next_cell = &self.head;
-        let mut boxed_cons = Box::new_in(Cons::new(val), self.alloc.clone());
-        loop {
-            match next_cell.set(boxed_cons) {
-                Ok(()) => {
-                    // Safe because we are sure the `next` value is set.
-                    return &unsafe { next_cell.get().unwrap_unchecked() }.val;
-                }
-                Err(new_val_cons) => {
-                    // Safe because we are sure the `next` value is set.
-                    next_cell = &unsafe { next_cell.get().unwrap_unchecked() }.next;
-                    boxed_cons = new_val_cons;
-                }
-            }
-        }
+        let boxed_cons = Box::new_in(Cons::new(val), self.alloc.clone());
+        self.push_inner(boxed_cons, |c| c)
     }
 
     /// An almost same method with the [`std::iter::Extend::extend`],
@@ -297,20 +286,23 @@ impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
     /// You can push a sized value to the list. For exaple, you can push `[i32; 3]` to the list of `[i32]`.
     #[cfg(feature = "nightly")]
     pub fn push_unsized<U: Unsize<T>>(&self, val: U) -> &U {
+        let boxed_cons = Cons::new_boxed(val, self.alloc.clone());
+        self.push_inner(boxed_cons, |c| unsafe { &*(c as *const T as *const U) })
+    }
+
+    fn push_inner<F, U>(&self, mut new_cons: Box<Cons<T, T, A>, A>, f: F) -> &U
+    where
+        F: FnOnce(&T) -> &U,
+    {
         let mut next_cell = &self.head;
-        let mut boxed_cons = Cons::new_boxed(val, self.alloc.clone());
         loop {
-            match next_cell.set(boxed_cons) {
-                Ok(()) => {
-                    // Safe because we are sure the `next` value is set.
-                    let result_unsized = &unsafe { next_cell.get().unwrap_unchecked() }.val;
-                    // Safe because we are sure the `next`'s type is `U`.
-                    return unsafe { &*(result_unsized as *const T as *const U) };
+            match next_cell.try_insert2(new_cons) {
+                Ok(new_cons) => {
+                    return f(&new_cons.val);
                 }
-                Err(new_val_cons) => {
-                    // Safe because we are sure the `next` value is set.
-                    next_cell = &unsafe { next_cell.get().unwrap_unchecked() }.next;
-                    boxed_cons = new_val_cons;
+                Err((cur_cons, new_cons2)) => {
+                    next_cell = &cur_cons.next;
+                    new_cons = new_cons2;
                 }
             }
         }
@@ -392,6 +384,27 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
             },
             alloc,
         )
+    }
+}
+
+/// A workaround for the missing `OnceCell::try_insert` method.
+trait OnceCellExt<T> {
+    fn try_insert2(&self, value: T) -> Result<&T, (&T, T)>;
+}
+#[cfg(not(feature = "nightly"))]
+impl<T> OnceCellExt<T> for OnceCell<T> {
+    fn try_insert2(&self, value: T) -> Result<&T, (&T, T)> {
+        // The both unsafe blocks are safe because it's sure the cell value is set.
+        match self.set(value) {
+            Ok(()) => Ok(unsafe { self.get().unwrap_unchecked() }),
+            Err(value) => Err((unsafe { self.get().unwrap_unchecked() }, value)),
+        }
+    }
+}
+#[cfg(feature = "nightly")]
+impl<T> OnceCellExt<T> for OnceCell<T> {
+    fn try_insert2(&self, value: T) -> Result<&T, (&T, T)> {
+        <OnceCell<_>>::try_insert(self, value)
     }
 }
 

@@ -16,6 +16,7 @@
 #![cfg_attr(feature = "nightly", feature(allocator_api))]
 #![cfg_attr(feature = "nightly", feature(box_into_inner))]
 #![cfg_attr(feature = "nightly", feature(coerce_unsized))]
+#![cfg_attr(feature = "nightly", feature(doc_cfg))]
 #![cfg_attr(feature = "nightly", feature(once_cell_try_insert))]
 #![cfg_attr(feature = "nightly", feature(ptr_metadata))]
 #![cfg_attr(feature = "nightly", feature(unsize))]
@@ -250,13 +251,12 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
 impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     /// Removes the first value in the list that matches the predicate, and returns the value as a boxed value.
     ///
-    /// This method is available only on the nightly compiler.
-    ///
     /// This method supports the unsized value type `T` as well.
     ///
     /// Note that even though this method returns a boxed value, the box is something re-allcoated.
     /// So this method might not be efficient as you expect.
     #[cfg(feature = "nightly")]
+    #[cfg_attr(feature = "nightly", doc(cfg(feature = "nightly")))]
     pub fn remove_into_box<P>(&mut self, pred: P) -> Option<Box<T, A>>
     where
         P: FnMut(&T) -> bool,
@@ -266,14 +266,13 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
 
     /// Removes the first value in the list that matches the predicate, and returns the value.
     ///
-    /// This method is available only on the nightly compiler.
-    ///
     /// The predicate function `pred` should return `Some(&U)` if the value is found,
     /// and the returned reference `&U` must be the same address as the value given in the `pred`.
     ///
     /// # Safety
     /// This method is unsafe because it requires the predicate to return a reference to the same address as the value.
     #[cfg(feature = "nightly")]
+    #[cfg_attr(feature = "nightly", doc(cfg(feature = "nightly")))]
     pub unsafe fn remove_unsized_as<U, P>(&mut self, mut pred: P) -> Option<U>
     where
         P: FnMut(&T) -> Option<&U>,
@@ -343,10 +342,9 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
 impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
     /// An unsized version of the [`OnceList::push`] method.
     ///
-    /// This method is available only on the nightly compiler.
-    ///
     /// You can push a sized value to the list. For exaple, you can push `[i32; 3]` to the list of `[i32]`.
     #[cfg(feature = "nightly")]
+    #[cfg_attr(feature = "nightly", doc(cfg(feature = "nightly")))]
     pub fn push_unsized<U: Unsize<T>>(&self, val: U) -> &U {
         let boxed_cons = Cons::new_boxed(val, self.alloc.clone());
         self.push_inner(boxed_cons, |c| unsafe { &*(c as *const T as *const U) })

@@ -413,6 +413,8 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
     pub fn push_any<T: Any>(&self, val: T) -> &T {
         let sized_box = Box::new_in(Cons::<T, dyn Any, A>::new(val), A::clone(&self.alloc));
         // Because we are using the non-standard `Box`, we need to manually do the unsized coercions...
+        // Watching the PR:
+        // https://github.com/zakarumych/allocator-api2/pull/23
         let unsized_box = unsafe {
             let (sized_ptr, alloc) = Box::into_raw_with_allocator(sized_box);
             // Pointer unsized corecion!

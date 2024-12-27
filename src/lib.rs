@@ -175,18 +175,15 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 }
 
-impl<T, A: Allocator> OnceList<T, A> {
-    /// Find a first value in the list matches the predicate, remove that item from the list,
-    /// and then returns that value.
-    pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
-    where
-        P: FnMut(&T) -> bool,
-    {
-        self.remove_inner(&mut pred, |boxed_cons| Box::into_inner(boxed_cons).val)
-    }
-}
-
 impl<T: ?Sized, A: Allocator> OnceList<T, A> {
+    /// Removes the first value in the list that matches the predicate, and returns the value as a boxed value.
+    ///
+    /// This method is available only on the nightly compiler.
+    ///
+    /// This method supports the unsized value type `T` as well.
+    ///
+    /// Note that even though this method returns a boxed value, the box is something re-allcoated.
+    /// So this method might not be efficient as you expect.
     #[cfg(feature = "nightly")]
     pub fn remove_into_box<P>(&mut self, pred: P) -> Option<Box<T, A>>
     where
@@ -196,6 +193,8 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 
     /// Removes the first value in the list that matches the predicate, and returns the value.
+    ///
+    /// This method is available only on the nightly compiler.
     ///
     /// The predicate function `pred` should return `Some(&U)` if the value is found,
     /// and the returned reference `&U` must be the same address as the value given in the `pred`.
@@ -238,15 +237,12 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
                 // Free the cons memory.
                 unsafe { alloc.deallocate(cons_ptr.cast(), cons_layout) };
 
-                // Return. Safe because we set the value just above.
                 result
             },
         )
     }
-}
 
-impl<T: ?Sized, A: Allocator> OnceList<T, A> {
-    /// An inner implementeation for `remove` and `remove_unsized`.
+    /// An inner implementeation for `remove_xxx` methods.
     fn remove_inner<P, F, U>(&mut self, mut pred: P, mut f: F) -> Option<U>
     where
         P: FnMut(&T) -> bool,
@@ -272,6 +268,49 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 }
 
+impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
+    /// An unsized version of the [`OnceList::push`] method.
+    ///
+    /// This method is available only on the nightly compiler.
+    ///
+    /// You can push a sized value to the list. For exaple, you can push `[i32; 3]` to the list of `[i32]`.
+    #[cfg(feature = "nightly")]
+    pub fn push_unsized<U: Unsize<T>>(&self, val: U) -> &U {
+        let boxed_cons = Cons::new_boxed(val, self.alloc.clone());
+        self.push_inner(boxed_cons, |c| unsafe { &*(c as *const T as *const U) })
+    }
+
+    /// An inner implementation for the `push_xxx` methods.
+    fn push_inner<F, U>(&self, mut new_cons: Box<Cons<T, T, A>, A>, f: F) -> &U
+    where
+        F: FnOnce(&T) -> &U,
+    {
+        let mut next_cell = &self.head;
+        loop {
+            match next_cell.try_insert2(new_cons) {
+                Ok(new_cons) => {
+                    return f(&new_cons.val);
+                }
+                Err((cur_cons, new_cons2)) => {
+                    next_cell = &cur_cons.next;
+                    new_cons = new_cons2;
+                }
+            }
+        }
+    }
+}
+
+impl<T, A: Allocator> OnceList<T, A> {
+    /// Find a first value in the list matches the predicate, remove that item from the list,
+    /// and then returns that value.
+    pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
+    where
+        P: FnMut(&T) -> bool,
+    {
+        self.remove_inner(&mut pred, |boxed_cons| Box::into_inner(boxed_cons).val)
+    }
+}
+
 impl<T, A: Allocator + Clone> OnceList<T, A> {
     /// Appends a value to the list, and returns the reference to that value.
     ///
@@ -291,38 +330,6 @@ impl<T, A: Allocator + Clone> OnceList<T, A> {
         for val in iter {
             let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
             last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
-        }
-    }
-}
-
-impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
-    /// An unsized version of the [`OnceList::push`] method.
-    ///
-    /// This method is available only on the nightly compiler.
-    ///
-    /// You can push a sized value to the list. For exaple, you can push `[i32; 3]` to the list of `[i32]`.
-    #[cfg(feature = "nightly")]
-    pub fn push_unsized<U: Unsize<T>>(&self, val: U) -> &U {
-        let boxed_cons = Cons::new_boxed(val, self.alloc.clone());
-        self.push_inner(boxed_cons, |c| unsafe { &*(c as *const T as *const U) })
-    }
-
-    /// An inner implementation for the `push` and `push_unsized` methods.
-    fn push_inner<F, U>(&self, mut new_cons: Box<Cons<T, T, A>, A>, f: F) -> &U
-    where
-        F: FnOnce(&T) -> &U,
-    {
-        let mut next_cell = &self.head;
-        loop {
-            match next_cell.try_insert2(new_cons) {
-                Ok(new_cons) => {
-                    return f(&new_cons.val);
-                }
-                Err((cur_cons, new_cons2)) => {
-                    next_cell = &cur_cons.next;
-                    new_cons = new_cons2;
-                }
-            }
         }
     }
 }

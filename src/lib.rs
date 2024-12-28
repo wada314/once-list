@@ -67,16 +67,16 @@ use ::std::sync::OnceLock as OnceCell;
 /// assert_eq!(list_mut.iter().copied().collect::<Vec<_>>(), vec![1, 3, 4, 5]);
 /// ```
 ///
-/// # (Almost nightly rustc only) Unsized types support
+/// # Unsized types support
 ///
 /// You can use the [unsized types] like `str`, `[u8]` or `dyn Display` as the value type of the `OnceList`.
 ///
-/// Though you can use this feature without the nightly rustc compiler, you can not push or extend
-/// the values to the list without the nightly compiler nor without the `nightly` feature enabled.
-/// In that case you can only create an empty list, that's all.
+/// If you are using the stable rust compiler, you can only use the `dyn Any` type as the unsized type.
+/// (Strictly speaking, you can use ANY type as the unsized type, but you can't do any actual operations
+/// like pushing, removing, etc.)
 ///
-/// In the nightly compiler and with the `nightly` feature
-/// enabled, the additional methods like `push_unsized`, `remove_unsized_as` become available:
+/// In the nightly compiler and with the `nightly` feature enabled, the additional methods like `push_unsized`
+/// and `remove_unsized_as` become available:
 ///
 /// ```rust
 /// # #[cfg(not(feature = "nightly"))]
@@ -410,6 +410,18 @@ impl<T, A: Allocator + Clone> OnceList<T, A> {
 
 impl<A: Allocator + Clone> OnceList<dyn Any, A> {
     /// Pushes an aribitrary value to the list, and returns the reference to that value.
+    ///
+    /// ```rust
+    /// use once_list2::OnceList;
+    /// use std::any::Any;
+    ///
+    /// let list = OnceList::<dyn Any>::new();
+    /// list.push_any(1);
+    /// list.push_any("hello");
+    ///
+    /// assert_eq!(list.iter().nth(0).unwrap().downcast_ref::<i32>(), Some(&1));
+    /// assert_eq!(list.iter().nth(1).unwrap().downcast_ref::<&str>(), Some(&"hello"));
+    /// ```
     pub fn push_any<T: Any>(&self, val: T) -> &T {
         let sized_box = Box::new_in(Cons::<T, dyn Any, A>::new(val), A::clone(&self.alloc));
         // Because we are using the non-standard `Box`, we need to manually do the unsized coercions...
@@ -429,11 +441,38 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
     }
 
     /// Finds the first value in the list that is the same type as `T`, and returns the reference to that value.
+    ///
+    /// ```rust
+    /// use once_list2::OnceList;
+    /// use std::any::Any;
+    ///
+    /// let list = OnceList::<dyn Any>::new();
+    /// list.push_any(1);
+    /// list.push_any("hello");
+    ///
+    /// assert_eq!(list.find_by_type::<i32>(), Some(&1));
+    /// assert_eq!(list.find_by_type::<&str>(), Some(&"hello"));
+    /// assert_eq!(list.find_by_type::<Vec<u8>>(), None);
+    /// ```
     pub fn find_by_type<T: Any>(&self) -> Option<&T> {
         self.iter().find_map(|val| val.downcast_ref())
     }
 
     /// Removes the first value in the list that is the same type as `T`, and returns the value.
+    ///
+    /// ```rust
+    /// use once_list2::OnceList;
+    /// use std::any::Any;
+    ///
+    /// let mut list = OnceList::<dyn Any>::new();
+    /// list.push_any(1);
+    /// list.push_any("hello");
+    ///
+    /// assert_eq!(list.remove_by_type::<i32>(), Some(1));
+    ///
+    /// assert_eq!(list.len(), 1);
+    /// assert_eq!(list.iter().nth(0).unwrap().downcast_ref::<&str>(), Some(&"hello"));
+    /// ```
     pub fn remove_by_type<T: Any>(&mut self) -> Option<T> {
         self.remove_inner(
             |v| v.is::<T>(),

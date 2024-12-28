@@ -21,7 +21,11 @@ Cargo.lock
 #.idea/
 
 # vscode settings
-.vscode/
+.vscode/*
+# Allow settings.json to add a feature flag setting
+!.vscode/settings.json
+# Allow tasks.json to add build / test / doc tasks with feature flags
+!.vscode/tasks.json
 
 # Added by cargo
 

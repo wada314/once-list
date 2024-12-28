@@ -277,7 +277,7 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     /// This method is unsafe because it requires the predicate to return a reference to the same address as the value.
     #[cfg(feature = "nightly")]
     #[cfg_attr(feature = "nightly", doc(cfg(feature = "nightly")))]
-    pub unsafe fn remove_unsized_as<U, P>(&mut self, mut pred: P) -> Option<U>
+    pub unsafe fn remove_unsized_as<P, U>(&mut self, mut pred: P) -> Option<U>
     where
         P: FnMut(&T) -> Option<&U>,
     {

@@ -439,7 +439,9 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
             |c| c.downcast_ref::<T>().unwrap(),
         )
     }
+}
 
+impl<A: Allocator> OnceList<dyn Any, A> {
     /// Finds the first value in the list that is the same type as `T`, and returns the reference to that value.
     ///
     /// ```rust

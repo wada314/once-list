@@ -26,6 +26,7 @@ use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
 use ::std::any::Any;
 use ::std::fmt::Debug;
+use ::std::hash::Hash;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
 use ::std::ops::DerefMut;
@@ -514,6 +515,23 @@ impl<T: ?Sized + Debug, A: Allocator> Debug for OnceList<T, A> {
     }
 }
 
+impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for OnceList<T, A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter().eq(other.iter())
+    }
+}
+
+impl<T: ?Sized + Eq, A: Allocator> Eq for OnceList<T, A> {}
+
+impl<T: ?Sized + Hash, A: Allocator> Hash for OnceList<T, A> {
+    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+        state.write_usize(self.len());
+        for val in self.iter() {
+            val.hash(state);
+        }
+    }
+}
+
 impl<T> FromIterator<T> for OnceList<T, Global> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
         let list = Self::new();
@@ -735,6 +753,54 @@ mod tests {
 
         assert_eq!(list.remove(|&v| v == 3), Some(3));
         assert!(list.is_empty());
+    }
+
+    #[test]
+    fn test_eq() {
+        let list1 = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        let list2 = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        assert_eq!(list1, list2);
+
+        let list3 = [1, 2, 4].into_iter().collect::<OnceList<_>>();
+        assert_ne!(list1, list3);
+
+        let list4 = OnceList::<i32>::new();
+        assert_eq!(list4, list4);
+        assert_ne!(list1, list4);
+    }
+
+    #[test]
+    fn test_hash() {
+        use ::std::hash::{DefaultHasher, Hasher};
+        let mut hasher1 = DefaultHasher::new();
+        let mut hasher2 = DefaultHasher::new();
+
+        let list1 = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        let list2 = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        list1.hash(&mut hasher1);
+        list2.hash(&mut hasher2);
+        assert_eq!(hasher1.finish(), hasher2.finish());
+
+        let list3 = [1, 2, 4].into_iter().collect::<OnceList<_>>();
+        let mut hasher3 = DefaultHasher::new();
+        list3.hash(&mut hasher3);
+        assert_ne!(hasher1.finish(), hasher3.finish());
+
+        // make sure the hasher is prefix-free.
+        // See https://doc.rust-lang.org/beta/std/hash/trait.Hash.html#prefix-collisions
+        let tuple1 = (
+            [1, 2].into_iter().collect::<OnceList<_>>(),
+            [3].into_iter().collect::<OnceList<_>>(),
+        );
+        let tuple2 = (
+            [1].into_iter().collect::<OnceList<_>>(),
+            [2, 3].into_iter().collect::<OnceList<_>>(),
+        );
+        let mut hasher4 = DefaultHasher::new();
+        let mut hasher5 = DefaultHasher::new();
+        tuple1.hash(&mut hasher4);
+        tuple2.hash(&mut hasher5);
+        assert_ne!(hasher4.finish(), hasher5.finish());
     }
 
     #[test]

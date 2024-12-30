@@ -514,6 +514,14 @@ impl<T: ?Sized + Debug, A: Allocator> Debug for OnceList<T, A> {
     }
 }
 
+impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for OnceList<T, A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter().eq(other.iter())
+    }
+}
+
+impl<T: ?Sized + Eq, A: Allocator> Eq for OnceList<T, A> {}
+
 impl<T> FromIterator<T> for OnceList<T, Global> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
         let list = Self::new();

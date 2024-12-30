@@ -26,6 +26,7 @@ use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
 use ::std::any::Any;
 use ::std::fmt::Debug;
+use ::std::hash::Hash;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
 use ::std::ops::DerefMut;
@@ -521,6 +522,15 @@ impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for OnceList<T, A> {
 }
 
 impl<T: ?Sized + Eq, A: Allocator> Eq for OnceList<T, A> {}
+
+impl<T: ?Sized + Hash, A: Allocator> Hash for OnceList<T, A> {
+    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+        state.write_usize(self.len());
+        for val in self.iter() {
+            val.hash(state);
+        }
+    }
+}
 
 impl<T> FromIterator<T> for OnceList<T, Global> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {

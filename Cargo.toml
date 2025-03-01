@@ -1,6 +1,6 @@
 [package]
 name = "once-list2"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 description = "A single linked list which is backed by `OnceCell`. You can append the value to the non-mutable `OnceList`."
 license-file = "LICENSE"
@@ -13,3 +13,6 @@ allocator-api2 = "0.2.21"
 default = []
 nightly = ["allocator-api2/nightly"]
 sync = []
+
+[package.metadata.docs.rs]
+features = ["nightly"]

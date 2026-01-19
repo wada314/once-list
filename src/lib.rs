@@ -122,9 +122,23 @@ pub struct OnceList<T: ?Sized, A: Allocator = Global> {
 
 /// A single linked list node.
 ///
-/// Type parameter `T` and `U` are essentially the same type, but for rust's unsized coercion
-/// feature, we need to separate them.
-/// Then we can safely cast `&Cons<SizedT, U, A>` into `&Cons<UnsizedT, U, A>`.
+/// ## Why are there two type parameters (`T` and `U`)?
+///
+/// - `T` is the value type stored in **this** node (`val: T`).
+/// - `U` is the value type stored in the **next and subsequent** nodes
+///   (`next: OnceCell<Box<Cons<U, U, A>, A>>`).
+///
+/// In the common (sized) case, `T` and `U` are the same type and you can read this as a normal
+/// homogeneous linked list.
+///
+/// For the *unsized* use case (e.g. `str`, `[u8]`, `dyn Trait`), Rust's unsized coercion works only
+/// on the **current** value type (`T`). The rest of the list must keep a single, fixed node layout.
+/// In other words, although the name is `Cons<T, U, A>`, the \"list item type\" for nodes after the
+/// first one is effectively fixed as `U` by the linked-list design (`Cons<U, U, A>` repeats).
+///
+/// Separating `T` and `U` lets us safely treat:
+/// - `&Cons<SizedT, U, A>` as `&Cons<UnsizedT, U, A>` (coercing only the current `val`),
+/// while keeping the tail (`next`) layout unchanged.
 #[derive(Clone)]
 struct Cons<T: ?Sized, U: ?Sized, A: Allocator> {
     next: OnceCell<Box<Cons<U, U, A>, A>>,
@@ -151,6 +165,30 @@ impl<'a, T: ?Sized, A: Allocator> Iterator for Iter<'a, T, A> {
         let next_box = self.next_cell.get()?;
         self.next_cell = &next_box.next;
         Some(&next_box.val)
+    }
+}
+
+/// A mutable iterator over references in a [`OnceList`].
+///
+/// This iterator is intentionally a named type (instead of `impl Iterator`) so that downstream
+/// crates can store it in structs without boxing or dynamic dispatch.
+///
+/// Note: Due to the singly-linked structure and internal `OnceCell`, advancing the iterator needs
+/// to update the internal pointer. To return `&'a mut T`, this iterator uses a small amount of
+/// `unsafe` internally (mirroring the previous inlined implementation of `iter_mut()`).
+pub struct IterMut<'a, T: ?Sized, A: Allocator = Global> {
+    next_cell: &'a mut OnceCell<Box<Cons<T, T, A>, A>>,
+}
+
+impl<'a, T: ?Sized, A: Allocator> Iterator for IterMut<'a, T, A> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_box = self.next_cell.get_mut()?;
+        // Need to cast the `self` lifetime to `&'a` to update the `Self::Item`.
+        let next_cons = unsafe { &mut *::std::ptr::from_mut(next_box.as_mut()) };
+        self.next_cell = &mut next_cons.next;
+        Some(&mut next_cons.val)
     }
 }
 
@@ -241,21 +279,8 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 
     /// Returns an iterator over the `&mut T` references in the list.
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        struct Iter<'a, T: ?Sized, A: Allocator> {
-            next_cell: &'a mut OnceCell<Box<Cons<T, T, A>, A>>,
-        }
-        impl<'a, T: ?Sized, A: Allocator> Iterator for Iter<'a, T, A> {
-            type Item = &'a mut T;
-            fn next(&mut self) -> Option<Self::Item> {
-                let next_box = self.next_cell.get_mut()?;
-                // Need to cast the `self` lifetime to `&'a` to update the `Self::Item`.
-                let next_cons = unsafe { &mut *::std::ptr::from_mut(next_box.as_mut()) };
-                self.next_cell = &mut next_cons.next;
-                Some(&mut next_cons.val)
-            }
-        }
-        Iter {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T, A> {
+        IterMut {
             next_cell: &mut self.head,
         }
     }
@@ -689,6 +714,48 @@ mod tests {
         list.push(2);
         assert_eq!(it.next(), Some(&2));
         assert_eq!(it.next(), None);
+    }
+
+    #[test]
+    fn test_iter_sees_extend_after_exhausted() {
+        let list = OnceList::<i32>::new();
+        list.push(1);
+
+        let mut it = list.iter();
+        assert_eq!(it.next(), Some(&1));
+        assert_eq!(it.next(), None);
+
+        // Same property should hold for `extend()` as well.
+        list.extend([2, 3]);
+        assert_eq!(it.next(), Some(&2));
+        assert_eq!(it.next(), Some(&3));
+        assert_eq!(it.next(), None);
+    }
+
+    #[test]
+    fn test_iter_mut_allows_in_place_update() {
+        let mut list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
+        for v in list.iter_mut() {
+            *v += 10;
+        }
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
+    }
+
+    #[test]
+    fn test_iter_mut_empty_and_singleton() {
+        // Empty list
+        let mut empty = OnceList::<i32>::new();
+        let mut it = empty.iter_mut();
+        assert!(it.next().is_none());
+
+        // Singleton list
+        let mut single = OnceList::<i32>::new();
+        single.push(1);
+        let mut it = single.iter_mut();
+        let v = it.next().unwrap();
+        *v = 2;
+        assert!(it.next().is_none());
+        assert_eq!(single.into_iter().collect::<Vec<_>>(), vec![2]);
     }
 
     #[test]

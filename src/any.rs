@@ -6,8 +6,12 @@ use ::std::ptr::NonNull;
 
 use crate::cons::Cons;
 use crate::once_list::OnceList;
+use crate::tail_mode::TailMode;
 
-impl<A: Allocator + Clone> OnceList<dyn Any, A> {
+impl<A: Allocator + Clone, M> OnceList<dyn Any, A, M>
+where
+    M: TailMode<dyn Any, A>,
+{
     /// Pushes an aribitrary value to the list, and returns the reference to that value.
     ///
     /// ```rust
@@ -40,7 +44,10 @@ impl<A: Allocator + Clone> OnceList<dyn Any, A> {
     }
 }
 
-impl<A: Allocator> OnceList<dyn Any, A> {
+impl<A: Allocator, M> OnceList<dyn Any, A, M>
+where
+    M: TailMode<dyn Any, A>,
+{
     /// Finds the first value in the list that is the same type as `T`, and returns the reference to that value.
     ///
     /// ```rust

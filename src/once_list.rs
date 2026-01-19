@@ -1,4 +1,3 @@
-use ::allocator_api2::alloc;
 use ::allocator_api2::alloc::{Allocator, Global};
 use ::allocator_api2::boxed::Box;
 use ::std::fmt::Debug;
@@ -9,35 +8,148 @@ use ::std::ops::DerefMut;
 
 use crate::cons::Cons;
 use crate::iter::{IntoIter, Iter, IterMut};
-use crate::oncecell_ext::OnceCellExt;
-use crate::OnceCell;
+use crate::tail_mode::{NoTail, TailMode, TailSlot, WithTail};
 
 /// A single linked list which behaves like [`std::cell::OnceCell`], but for multiple values.
+///
+/// # Usage
+///
+/// A simple example:
+///
+/// ```rust
+/// use once_list2::OnceList;
+///
+/// // Create a new empty list. Note that the variable is immutable.
+/// let list = OnceList::<i32>::new();
+///
+/// // You can push values to the list without the need for mutability.
+/// list.push(1);
+/// list.push(2);
+///
+/// // Or you can push multiple values at once.
+/// list.extend([3, 4, 5]);
+///
+/// // You can iterate over the list.
+/// assert_eq!(list.iter().copied().collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
+///
+/// // Some methods are mutable only.
+/// let mut list_mut = list;
+///
+/// // You can remove (take) a value from the list.
+/// let removed = list_mut.remove(|&x| x % 2 == 0);
+/// assert_eq!(removed, Some(2));
+/// assert_eq!(list_mut.iter().copied().collect::<Vec<_>>(), vec![1, 3, 4, 5]);
+/// ```
+///
+/// # Tail caching (optional)
+///
+/// By default, `push()` is O(n). If you need repeated tail appends, use the with-tail variant:
+///
+/// - `OnceList::new_with_tail()`
+/// - `OnceList::new_in_with_tail(alloc)`
+/// - `once_list2::OnceListWithTail<T, A>`
+///
+/// This keeps the same behavior guarantees (including the iterator observing newly pushed values),
+/// but optimizes the common append path to (amortized) O(1) in single-threaded use cases.
+///
+/// # Unsized types support
+///
+/// You can use the [unsized types] like `str`, `[u8]` or `dyn Display` as the value type of the `OnceList`.
+///
+/// If you are using the stable rust compiler, you can only use the `dyn Any` type as the unsized type.
+/// (Strictly speaking, you can use ANY type as the unsized type, but you can't do any actual operations
+/// like pushing, removing, etc.)
+///
+/// In the nightly compiler and with the `nightly` feature enabled, the additional methods like `push_unsized`
+/// and `remove_unsized_as` become available:
+///
+/// ```rust
+/// # #[cfg(not(feature = "nightly"))]
+/// # fn main() {}
+/// # #[cfg(feature = "nightly")]
+/// # fn main() {
+/// // This code only works with the nightly compiler and the `nightly` feature enabled.
+///
+/// use once_list2::OnceList;
+///
+/// // Creating a `OnceList` for `[i32]`, the unsized type.
+/// let list = OnceList::<[i32]>::new();
+///
+/// list.push_unsized([1] /* A sized array type, `[i32; 1]`, can be coerced into [i32].*/);
+/// list.push_unsized([2, 3] /* Same for `[i32; 2] type. */);
+///
+/// // The normal methods like `iter` are available because it returns a reference to the value.
+/// assert_eq!(list.iter().nth(0).unwrap(), &[1]);
+/// assert_eq!(list.iter().nth(1).unwrap(), &[2, 3]);
+///
+/// let mut list_mut = list;
+///
+/// // `remove_unsized_as` method allows you to check the unsized value type and remove it.
+/// let removed: Option<[i32; 2]> = unsafe {
+///     list_mut.remove_unsized_as(|x| if x.len() == 2 {
+///         Some(x.try_into().unwrap())
+///     } else {
+///         None
+///     })
+/// };
+/// // The removed value is an array, not a slice!
+/// assert_eq!(removed, Some([2, 3]));
+/// # }
+/// ```
+/// [unsized types]: https://doc.rust-lang.org/book/ch19-04-advanced-types.html#dynamically-sized-types-and-the-sized-trait
 #[derive(Clone)]
-pub struct OnceList<T: ?Sized, A: Allocator = Global> {
-    pub(crate) head: OnceCell<Box<Cons<T, T, A>, A>>,
+pub struct OnceList<T: ?Sized, A: Allocator = Global, M = NoTail>
+{
+    pub(crate) head: TailSlot<T, A>,
     pub(crate) alloc: A,
+    pub(crate) mode: M,
 }
 
-impl<T: ?Sized> OnceList<T, Global> {
+pub type OnceListWithTail<T, A = Global> = OnceList<T, A, WithTail<T, A>>;
+
+impl<T: ?Sized> OnceList<T, Global, NoTail> {
     /// Creates a new empty `OnceList`. This method does not allocate.
     pub fn new() -> Self {
         Self {
-            head: OnceCell::new(),
+            head: TailSlot::new(),
             alloc: Global,
+            mode: NoTail,
         }
     }
 }
 
-impl<T: ?Sized, A: Allocator> OnceList<T, A> {
+impl<T: ?Sized> OnceList<T, Global, NoTail> {
+    /// Creates a new empty `OnceList` with tail caching enabled.
+    pub fn new_with_tail() -> OnceListWithTail<T, Global> {
+        OnceList {
+            head: TailSlot::new(),
+            alloc: Global,
+            mode: WithTail::new(),
+        }
+    }
+}
+
+impl<T: ?Sized, A: Allocator> OnceList<T, A, NoTail> {
     /// Creates a new empty `OnceList` with the given allocator. This method does not allocate.
     pub fn new_in(alloc: A) -> Self {
         Self {
-            head: OnceCell::new(),
+            head: TailSlot::new(),
             alloc,
+            mode: NoTail,
         }
     }
 
+    /// Creates a new empty `OnceList` with the given allocator and tail caching enabled.
+    pub fn new_in_with_tail(alloc: A) -> OnceListWithTail<T, A> {
+        OnceList {
+            head: TailSlot::new(),
+            alloc,
+            mode: WithTail::new(),
+        }
+    }
+}
+
+impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M> {
     /// Returns the number of values in the list. This method is O(n).
     pub fn len(&self) -> usize {
         self.iter().count()
@@ -91,7 +203,7 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
         last_opt
     }
 
-    pub(crate) fn last_cell(&self) -> &OnceCell<Box<Cons<T, T, A>, A>> {
+    pub(crate) fn last_cell(&self) -> &TailSlot<T, A> {
         let mut next_cell = &self.head;
         while let Some(next_box) = next_cell.get() {
             next_cell = &next_box.next;
@@ -109,18 +221,27 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
         IterMut::new(&mut self.head)
     }
 
-    /// Clears the list, dropping all values.
-    pub fn clear(&mut self) {
-        self.head = OnceCell::new();
-    }
-
     /// Returns an allocator of this struct.
     pub fn allocator(&self) -> &A {
         &self.alloc
     }
 }
 
-impl<T: ?Sized, A: Allocator> OnceList<T, A> {
+impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
+    /// Clears the list, dropping all values.
+    pub fn clear(&mut self) {
+        self.head = TailSlot::new();
+        self.mode.invalidate();
+    }
+}
+
+impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     /// Removes the first value in the list that matches the predicate, and returns the value as a boxed value.
     ///
     /// This method supports the unsized value type `T` as well.
@@ -149,6 +270,8 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     where
         P: FnMut(&T) -> Option<&U>,
     {
+        use ::allocator_api2::alloc;
+
         let found_sized_ptr: OnceCell<*const U> = OnceCell::new();
         self.remove_inner(
             |val| {
@@ -191,6 +314,9 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
         P: FnMut(&T) -> bool,
         F: FnMut(Box<Cons<T, T, A>, A>) -> U,
     {
+        // Any structural change through `&mut self` invalidates the cached tail slot.
+        self.mode.invalidate();
+
         let mut next_cell = &mut self.head;
         while let Some(next_ref) = next_cell.get() {
             if pred(&next_ref.val) {
@@ -211,7 +337,10 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 }
 
-impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
+impl<T: ?Sized, A: Allocator + Clone, M> OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     /// An unsized version of the [`OnceList::push`] method.
     ///
     /// You can push a sized value to the list. For exaple, you can push `[i32; 3]` to the list of `[i32]`.
@@ -227,10 +356,11 @@ impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
     where
         F: FnOnce(&T) -> &U,
     {
-        let mut next_cell = &self.head;
+        let mut next_cell = self.mode.start_slot(&self.head);
         loop {
             match next_cell.try_insert2(new_cons) {
                 Ok(new_cons) => {
+                    self.mode.on_push_success(&new_cons.next);
                     return f(&new_cons.val);
                 }
                 Err((cur_cons, new_cons2)) => {
@@ -242,7 +372,10 @@ impl<T: ?Sized, A: Allocator + Clone> OnceList<T, A> {
     }
 }
 
-impl<T, A: Allocator> OnceList<T, A> {
+impl<T, A: Allocator, M> OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     /// Find a first value in the list matches the predicate, remove that item from the list,
     /// and then returns that value.
     pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
@@ -253,7 +386,10 @@ impl<T, A: Allocator> OnceList<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> OnceList<T, A> {
+impl<T, A: Allocator + Clone, M> OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     /// Appends a value to the list, and returns the reference to that value.
     ///
     /// Note that this method takes `&self`, not `&mut self`.
@@ -271,32 +407,43 @@ impl<T, A: Allocator + Clone> OnceList<T, A> {
         let alloc = self.allocator();
         for val in iter {
             let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
-            last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
+            let inserted = unsafe { &last_cell.get().unwrap_unchecked() };
+            self.mode.on_push_success(&inserted.next);
+            last_cell = &inserted.next;
         }
     }
 }
 
-impl<T: ?Sized> Default for OnceList<T, Global> {
+impl<T: ?Sized> Default for OnceList<T, Global, NoTail> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: ?Sized + Debug, A: Allocator> Debug for OnceList<T, A> {
+impl<T: ?Sized + Debug, A: Allocator, M> Debug for OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }
 }
 
-impl<T: ?Sized + PartialEq, A: Allocator> PartialEq for OnceList<T, A> {
+impl<T: ?Sized + PartialEq, A: Allocator, M> PartialEq for OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     fn eq(&self, other: &Self) -> bool {
         self.iter().eq(other.iter())
     }
 }
 
-impl<T: ?Sized + Eq, A: Allocator> Eq for OnceList<T, A> {}
+impl<T: ?Sized + Eq, A: Allocator, M> Eq for OnceList<T, A, M> where M: TailMode<T, A> {}
 
-impl<T: ?Sized + Hash, A: Allocator> Hash for OnceList<T, A> {
+impl<T: ?Sized + Hash, A: Allocator, M> Hash for OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
         state.write_usize(self.len());
         for val in self.iter() {
@@ -305,7 +452,7 @@ impl<T: ?Sized + Hash, A: Allocator> Hash for OnceList<T, A> {
     }
 }
 
-impl<T> FromIterator<T> for OnceList<T, Global> {
+impl<T> FromIterator<T> for OnceList<T, Global, NoTail> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
         let list = Self::new();
         let mut last_cell = &list.head;
@@ -317,7 +464,10 @@ impl<T> FromIterator<T> for OnceList<T, Global> {
     }
 }
 
-impl<T, A: Allocator> IntoIterator for OnceList<T, A> {
+impl<T, A: Allocator, M> IntoIterator for OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     type Item = T;
     type IntoIter = IntoIter<T, A>;
 
@@ -326,11 +476,15 @@ impl<T, A: Allocator> IntoIterator for OnceList<T, A> {
     }
 }
 
-impl<T, A: Allocator + Clone> Extend<T> for OnceList<T, A> {
+impl<T, A: Allocator + Clone, M> Extend<T> for OnceList<T, A, M>
+where
+    M: TailMode<T, A>,
+{
     /// Due to the definition of the `Extend` trait, this method takes `&mut self`.
     /// Use the [`OnceList::extend`] method instead if you want to use `&self`.
     fn extend<U: IntoIterator<Item = T>>(&mut self, iter: U) {
-        <OnceList<T, A>>::extend(self, iter);
+        // Call the inherent `extend(&self, ..)` method.
+        OnceList::<T, A, M>::extend(&*self, iter);
     }
 }
 

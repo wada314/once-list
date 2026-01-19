@@ -21,9 +21,6 @@
 #![cfg_attr(feature = "nightly", feature(ptr_metadata))]
 #![cfg_attr(feature = "nightly", feature(unsize))]
 
-use ::allocator_api2::boxed::Box;
-use ::std::hash::Hash;
-
 #[cfg(not(feature = "sync"))]
 pub(crate) use ::std::cell::OnceCell;
 #[cfg(feature = "sync")]
@@ -38,10 +35,13 @@ mod tail_mode;
 
 pub use crate::iter::{IntoIter, Iter, IterMut};
 pub use crate::once_list::OnceList;
+pub use crate::once_list::OnceListWithTail;
+pub use crate::tail_mode::{NoTail, WithTail};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::std::hash::Hash;
 
     #[test]
     fn test_iter_sees_push_after_exhausted() {

@@ -1,10 +1,10 @@
-use ::allocator_api2::alloc;
 use ::allocator_api2::alloc::Allocator;
+#[cfg(feature = "nightly")]
 use ::allocator_api2::boxed::Box;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
 
-use crate::OnceCell;
+use crate::tail_mode::TailSlot;
 
 /// A single linked list node.
 ///
@@ -27,14 +27,14 @@ use crate::OnceCell;
 /// while keeping the tail (`next`) layout unchanged.
 #[derive(Clone)]
 pub(crate) struct Cons<T: ?Sized, U: ?Sized, A: Allocator> {
-    pub(crate) next: OnceCell<Box<Cons<U, U, A>, A>>,
+    pub(crate) next: TailSlot<U, A>,
     pub(crate) val: T,
 }
 
 impl<T, U: ?Sized, A: Allocator> Cons<T, U, A> {
     pub(crate) fn new(val: T) -> Self {
         Self {
-            next: OnceCell::new(),
+            next: TailSlot::new(),
             val,
         }
     }
@@ -49,7 +49,7 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
         // As mentioned in the [`Cons`]'s document, this unsized coercion cast is safe!
         Box::<Cons<U, T, A>, A>::new_in(
             Cons::<U, T, A> {
-                next: OnceCell::new(),
+                next: TailSlot::new(),
                 val,
             },
             alloc,
@@ -57,6 +57,7 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
     }
 
     pub(crate) fn box_into_inner_box(self: Box<Self, A>) -> Box<T, A> {
+        use ::allocator_api2::alloc;
         use ::std::ptr::{metadata, NonNull};
 
         let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&self);

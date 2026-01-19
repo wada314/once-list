@@ -131,6 +131,29 @@ struct Cons<T: ?Sized, U: ?Sized, A: Allocator> {
     val: T,
 }
 
+/// An iterator over references in a [`OnceList`].
+///
+/// This iterator is intentionally a named type (instead of `impl Iterator`) so that downstream
+/// crates can store it in structs without boxing or dynamic dispatch.
+///
+/// **Important**: This iterator observes newly pushed elements. If you reach the end (i.e. `next()`
+/// returns `None`) and later call `OnceList::push()`, calling `next()` again on the same `Iter`
+/// can yield the newly pushed element.
+#[derive(Clone, Copy)]
+pub struct Iter<'a, T: ?Sized, A: Allocator = Global> {
+    next_cell: &'a OnceCell<Box<Cons<T, T, A>, A>>,
+}
+
+impl<'a, T: ?Sized, A: Allocator> Iterator for Iter<'a, T, A> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_box = self.next_cell.get()?;
+        self.next_cell = &next_box.next;
+        Some(&next_box.val)
+    }
+}
+
 impl<T: ?Sized> OnceList<T, Global> {
     /// Creates a new empty `OnceList`. This method does not allocate.
     pub fn new() -> Self {
@@ -211,15 +234,10 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A> {
     }
 
     /// Returns an iterator over the `&T` references in the list.
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        let mut next_cell = &self.head;
-        ::std::iter::from_fn(move || match next_cell.get() {
-            Some(c) => {
-                next_cell = &c.next;
-                Some(&c.val)
-            }
-            None => None,
-        })
+    pub fn iter(&self) -> Iter<'_, T, A> {
+        Iter {
+            next_cell: &self.head,
+        }
     }
 
     /// Returns an iterator over the `&mut T` references in the list.
@@ -656,6 +674,22 @@ impl<T> OnceCellExt<T> for OnceCell<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_iter_sees_push_after_exhausted() {
+        let list = OnceList::<i32>::new();
+        list.push(1);
+
+        let mut it = list.iter();
+        assert_eq!(it.next(), Some(&1));
+        assert_eq!(it.next(), None);
+
+        // After the iterator reached the end, pushing a new element should make it visible
+        // from the same iterator.
+        list.push(2);
+        assert_eq!(it.next(), Some(&2));
+        assert_eq!(it.next(), None);
+    }
 
     #[test]
     fn test_new() {

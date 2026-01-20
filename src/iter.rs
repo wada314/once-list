@@ -2,7 +2,7 @@ use ::allocator_api2::alloc::Allocator;
 use ::allocator_api2::alloc::Global;
 use ::allocator_api2::boxed::Box;
 
-use crate::cache_mode::TailSlot;
+use crate::cache_mode::NextSlot;
 
 /// An iterator over references in a [`crate::OnceList`].
 ///
@@ -14,7 +14,7 @@ use crate::cache_mode::TailSlot;
 /// can yield the newly pushed element.
 #[derive(Clone, Copy)]
 pub struct Iter<'a, T: ?Sized, A: Allocator = Global> {
-    pub(crate) next_slot: &'a TailSlot<T, A>,
+    pub(crate) next_slot: &'a NextSlot<T, A>,
 }
 
 impl<'a, T: ?Sized + 'a, A: Allocator> Iterator for Iter<'a, T, A> {
@@ -36,7 +36,7 @@ impl<'a, T: ?Sized + 'a, A: Allocator> Iterator for Iter<'a, T, A> {
 /// to update the internal pointer. To return `&'a mut T`, this iterator uses a small amount of
 /// `unsafe` internally (mirroring the previous inlined implementation of `iter_mut()`).
 pub struct IterMut<'a, T: ?Sized, A: Allocator = Global> {
-    pub(crate) next_slot: &'a mut TailSlot<T, A>,
+    pub(crate) next_slot: &'a mut NextSlot<T, A>,
 }
 
 impl<'a, T: ?Sized + 'a, A: Allocator> Iterator for IterMut<'a, T, A> {
@@ -51,7 +51,7 @@ impl<'a, T: ?Sized + 'a, A: Allocator> Iterator for IterMut<'a, T, A> {
     }
 }
 
-pub struct IntoIter<T, A: Allocator>(pub(crate) TailSlot<T, A>);
+pub struct IntoIter<T, A: Allocator>(pub(crate) NextSlot<T, A>);
 
 impl<T, A: Allocator> Iterator for IntoIter<T, A> {
     type Item = T;
@@ -65,13 +65,13 @@ impl<T, A: Allocator> Iterator for IntoIter<T, A> {
 }
 
 impl<'a, T: ?Sized, A: Allocator> Iter<'a, T, A> {
-    pub(crate) fn new(next_slot: &'a TailSlot<T, A>) -> Self {
+    pub(crate) fn new(next_slot: &'a NextSlot<T, A>) -> Self {
         Self { next_slot }
     }
 }
 
 impl<'a, T: ?Sized, A: Allocator> IterMut<'a, T, A> {
-    pub(crate) fn new(next_slot: &'a mut TailSlot<T, A>) -> Self {
+    pub(crate) fn new(next_slot: &'a mut NextSlot<T, A>) -> Self {
         Self { next_slot }
     }
 }

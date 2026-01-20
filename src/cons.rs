@@ -4,7 +4,7 @@ use ::allocator_api2::boxed::Box;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
 
-use crate::cache_mode::TailSlot;
+use crate::cache_mode::NextSlot;
 
 /// A single linked list node.
 ///
@@ -27,14 +27,14 @@ use crate::cache_mode::TailSlot;
 /// while keeping the tail (`next`) layout unchanged.
 #[derive(Clone)]
 pub(crate) struct Cons<T: ?Sized, U: ?Sized, A: Allocator> {
-    pub(crate) next: TailSlot<U, A>,
+    pub(crate) next: NextSlot<U, A>,
     pub(crate) val: T,
 }
 
 impl<T, U: ?Sized, A: Allocator> Cons<T, U, A> {
     pub(crate) fn new(val: T) -> Self {
         Self {
-            next: TailSlot::new(),
+            next: NextSlot::new(),
             val,
         }
     }
@@ -49,7 +49,7 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
         // As mentioned in the [`Cons`]'s document, this unsized coercion cast is safe!
         Box::<Cons<U, T, A>, A>::new_in(
             Cons::<U, T, A> {
-                next: TailSlot::new(),
+                next: NextSlot::new(),
                 val,
             },
             alloc,
@@ -91,4 +91,3 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
         unsafe { Box::from_non_null_in(dst, alloc) }
     }
 }
-

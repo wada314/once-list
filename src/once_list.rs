@@ -6,7 +6,7 @@ use ::std::hash::Hash;
 use ::std::marker::Unsize;
 use ::std::ops::DerefMut;
 
-use crate::cache_mode::{CacheMode, NoCache, TailSlot, WithLen, WithTail, WithTailLen};
+use crate::cache_mode::{CacheMode, NextSlot, NoCache, WithLen, WithTail, WithTailLen};
 use crate::cons::Cons;
 use crate::iter::{IntoIter, Iter, IterMut};
 
@@ -130,7 +130,7 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 /// [`OnceList`] and [`OnceListWithTail`] point to this type.
 #[derive(Clone)]
 pub struct OnceListCore<T: ?Sized, A: Allocator = Global, C = NoCache> {
-    pub(crate) head_slot: TailSlot<T, A>,
+    pub(crate) head_slot: NextSlot<T, A>,
     pub(crate) alloc: A,
     pub(crate) cache_mode: C,
 }
@@ -143,7 +143,7 @@ pub struct OnceListCore<T: ?Sized, A: Allocator = Global, C = NoCache> {
 impl<T: ?Sized> OnceListCore<T, Global, WithLen<T, Global>> {
     pub fn new() -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: WithLen::new(),
         }
@@ -153,7 +153,7 @@ impl<T: ?Sized> OnceListCore<T, Global, WithLen<T, Global>> {
 impl<T: ?Sized, A: Allocator> OnceListCore<T, A, WithLen<T, A>> {
     pub fn new_in(alloc: A) -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: WithLen::new(),
         }
@@ -163,7 +163,7 @@ impl<T: ?Sized, A: Allocator> OnceListCore<T, A, WithLen<T, A>> {
 impl<T: ?Sized> OnceListCore<T, Global, WithTail<T, Global>> {
     pub fn new() -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: WithTail::new(),
         }
@@ -173,7 +173,7 @@ impl<T: ?Sized> OnceListCore<T, Global, WithTail<T, Global>> {
 impl<T: ?Sized, A: Allocator> OnceListCore<T, A, WithTail<T, A>> {
     pub fn new_in(alloc: A) -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: WithTail::new(),
         }
@@ -183,7 +183,7 @@ impl<T: ?Sized, A: Allocator> OnceListCore<T, A, WithTail<T, A>> {
 impl<T: ?Sized> OnceListCore<T, Global, WithTailLen<T, Global>> {
     pub fn new() -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: WithTailLen::new(),
         }
@@ -193,7 +193,7 @@ impl<T: ?Sized> OnceListCore<T, Global, WithTailLen<T, Global>> {
 impl<T: ?Sized, A: Allocator> OnceListCore<T, A, WithTailLen<T, A>> {
     pub fn new_in(alloc: A) -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: WithTailLen::new(),
         }
@@ -204,7 +204,7 @@ impl<T: ?Sized> OnceListCore<T, Global, NoCache> {
     /// Creates a new empty `OnceList`. This method does not allocate.
     pub fn new() -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: NoCache,
         }
@@ -215,7 +215,7 @@ impl<T: ?Sized, A: Allocator> OnceListCore<T, A, NoCache> {
     /// Creates a new empty `OnceList` with the given allocator. This method does not allocate.
     pub fn new_in(alloc: A) -> Self {
         Self {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: NoCache,
         }
@@ -285,7 +285,7 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
         last_opt
     }
 
-    pub(crate) fn last_cell(&self) -> &TailSlot<T, A> {
+    pub(crate) fn last_cell(&self) -> &NextSlot<T, A> {
         let mut next_cell = &self.head_slot;
         while let Some(next_box) = next_cell.get() {
             next_cell = &next_box.next;
@@ -315,7 +315,7 @@ where
 {
     /// Clears the list, dropping all values.
     pub fn clear(&mut self) {
-        self.head_slot = TailSlot::new();
+        self.head_slot = NextSlot::new();
         self.cache_mode.on_clear();
         self.cache_mode.invalidate();
     }

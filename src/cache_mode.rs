@@ -15,20 +15,20 @@ mod sealed {
 
 /// A "next node" slot (a thin wrapper around an internal `OnceCell`).
 ///
-/// Despite the name `TailSlot`, this type is used for:
+/// This type is used for:
 /// - The list's **head slot** (a slot that points to the first node)
 /// - Each node's **next slot** (`node.next`)
 /// - Optional **tail insertion caching** (caching a pointer to some node's `next` slot)
 ///
-/// The type name is historical: caching focuses on the tail insertion hot path, but the slot itself
-/// is conceptually "the next slot" in a singly-linked list.
+/// Caching focuses on the tail insertion hot path, but the slot itself is conceptually "the next slot"
+/// in a singly-linked list.
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct TailSlot<T: ?Sized, A: Allocator> {
+pub struct NextSlot<T: ?Sized, A: Allocator> {
     cell: OnceCell<Box<Cons<T, T, A>, A>>,
 }
 
-impl<T: ?Sized, A: Allocator> TailSlot<T, A> {
+impl<T: ?Sized, A: Allocator> NextSlot<T, A> {
     pub(crate) fn new() -> Self {
         Self {
             cell: OnceCell::new(),
@@ -72,12 +72,12 @@ pub trait CacheMode<T: ?Sized, A: Allocator>: sealed::Sealed + Clone {
     /// Returns a cached tail insertion slot, if available.
     ///
     /// Returning `None` means the caller should fall back to scanning from the head.
-    fn tail_slot_opt<'a>(&'a self) -> Option<&'a TailSlot<T, A>> {
+    fn tail_slot_opt<'a>(&'a self) -> Option<&'a NextSlot<T, A>> {
         None
     }
 
     /// Called after a push successfully inserted a node.
-    fn on_push_success(&self, next_slot: &TailSlot<T, A>);
+    fn on_push_success(&self, next_slot: &NextSlot<T, A>);
 
     /// Called after a remove successfully removed a node.
     fn on_remove_success(&self) {}
@@ -96,7 +96,7 @@ pub struct NoCache;
 impl sealed::Sealed for NoCache {}
 
 impl<T: ?Sized, A: Allocator> CacheMode<T, A> for NoCache {
-    fn on_push_success(&self, _next_slot: &TailSlot<T, A>) {}
+    fn on_push_success(&self, _next_slot: &NextSlot<T, A>) {}
 
     fn invalidate(&self) {}
 }
@@ -111,7 +111,7 @@ pub struct WithTail<T: ?Sized, A: Allocator> {
     next_slot: Cell<Option<SlotPtr<T, A>>>,
 }
 
-type SlotPtr<T, A> = NonNull<TailSlot<T, A>>;
+type SlotPtr<T, A> = NonNull<NextSlot<T, A>>;
 
 impl<T: ?Sized, A: Allocator> Clone for WithTail<T, A> {
     fn clone(&self) -> Self {
@@ -123,7 +123,7 @@ impl<T: ?Sized, A: Allocator> Clone for WithTail<T, A> {
 impl<T: ?Sized, A: Allocator> sealed::Sealed for WithTail<T, A> {}
 
 impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTail<T, A> {
-    fn tail_slot_opt<'a>(&'a self) -> Option<&'a TailSlot<T, A>> {
+    fn tail_slot_opt<'a>(&'a self) -> Option<&'a NextSlot<T, A>> {
         if let Some(p) = self.next_slot.get() {
             let slot = unsafe { p.as_ref() };
             // Fast-path: if the cached slot is still empty, use it.
@@ -134,7 +134,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTail<T, A> {
         None
     }
 
-    fn on_push_success(&self, next_slot: &TailSlot<T, A>) {
+    fn on_push_success(&self, next_slot: &NextSlot<T, A>) {
         self.next_slot.set(Some(NonNull::from(next_slot)));
     }
 
@@ -155,7 +155,7 @@ impl<T: ?Sized> WithTail<T, Global> {
     /// Creates a new empty list using this cache mode.
     pub fn new_list() -> OnceListCore<T, Global, WithTail<T, Global>> {
         OnceListCore {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: WithTail::new(),
         }
@@ -166,7 +166,7 @@ impl<T: ?Sized, A: Allocator> WithTail<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
     pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithTail<T, A>> {
         OnceListCore {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: WithTail::new(),
         }
@@ -195,7 +195,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithLen<T, A> {
         Some(self.len.get())
     }
 
-    fn on_push_success(&self, _next_slot: &TailSlot<T, A>) {
+    fn on_push_success(&self, _next_slot: &NextSlot<T, A>) {
         self.len.set(self.len.get() + 1);
     }
 
@@ -225,7 +225,7 @@ impl<T: ?Sized> WithLen<T, Global> {
     /// Creates a new empty list using this cache mode.
     pub fn new_list() -> OnceListCore<T, Global, WithLen<T, Global>> {
         OnceListCore {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: WithLen::new(),
         }
@@ -236,7 +236,7 @@ impl<T: ?Sized, A: Allocator> WithLen<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
     pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithLen<T, A>> {
         OnceListCore {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: WithLen::new(),
         }
@@ -267,7 +267,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTailLen<T, A> {
         Some(self.len.get())
     }
 
-    fn tail_slot_opt<'a>(&'a self) -> Option<&'a TailSlot<T, A>> {
+    fn tail_slot_opt<'a>(&'a self) -> Option<&'a NextSlot<T, A>> {
         if let Some(p) = self.next_slot.get() {
             let slot = unsafe { p.as_ref() };
             if slot.get().is_none() {
@@ -277,7 +277,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTailLen<T, A> {
         None
     }
 
-    fn on_push_success(&self, next_slot: &TailSlot<T, A>) {
+    fn on_push_success(&self, next_slot: &NextSlot<T, A>) {
         self.len.set(self.len.get() + 1);
         self.next_slot.set(Some(NonNull::from(next_slot)));
     }
@@ -310,7 +310,7 @@ impl<T: ?Sized> WithTailLen<T, Global> {
     /// Creates a new empty list using this cache mode.
     pub fn new_list() -> OnceListCore<T, Global, WithTailLen<T, Global>> {
         OnceListCore {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc: Global,
             cache_mode: WithTailLen::new(),
         }
@@ -321,7 +321,7 @@ impl<T: ?Sized, A: Allocator> WithTailLen<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
     pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithTailLen<T, A>> {
         OnceListCore {
-            head_slot: TailSlot::new(),
+            head_slot: NextSlot::new(),
             alloc,
             cache_mode: WithTailLen::new(),
         }

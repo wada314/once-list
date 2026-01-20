@@ -77,7 +77,9 @@ pub trait CacheMode<T: ?Sized, A: Allocator>: sealed::Sealed + Clone {
     }
 
     /// Called after a push successfully inserted a node.
-    fn on_push_success(&self, next_slot: &NextSlot<T, A>);
+    ///
+    /// Cache modes that track tail insertion slots and/or length should override this.
+    fn on_push_success(&self, _next_slot: &NextSlot<T, A>) {}
 
     /// Called after a remove successfully removed a node.
     fn on_remove_success(&self) {}
@@ -85,8 +87,10 @@ pub trait CacheMode<T: ?Sized, A: Allocator>: sealed::Sealed + Clone {
     /// Called when the list is cleared.
     fn on_clear(&self) {}
 
-    /// Called when list structure may change via `&mut self` methods (e.g. remove), to invalidate caches as needed.
-    fn invalidate(&self);
+    /// Called when list structure may change via `&mut self` methods (e.g. remove).
+    ///
+    /// Implementations should drop any cached pointers/slots that could become stale.
+    fn on_structure_change(&self);
 }
 
 /// No caching. This is the original behavior.
@@ -96,9 +100,7 @@ pub struct NoCache;
 impl sealed::Sealed for NoCache {}
 
 impl<T: ?Sized, A: Allocator> CacheMode<T, A> for NoCache {
-    fn on_push_success(&self, _next_slot: &NextSlot<T, A>) {}
-
-    fn invalidate(&self) {}
+    fn on_structure_change(&self) {}
 }
 
 /// Tail caching mode (single-thread oriented).
@@ -138,7 +140,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTail<T, A> {
         self.next_slot.set(Some(NonNull::from(next_slot)));
     }
 
-    fn invalidate(&self) {
+    fn on_structure_change(&self) {
         self.next_slot.set(None);
     }
 }
@@ -207,7 +209,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithLen<T, A> {
         self.len.set(0);
     }
 
-    fn invalidate(&self) {
+    fn on_structure_change(&self) {
         // Nothing to invalidate.
     }
 }
@@ -291,7 +293,7 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTailLen<T, A> {
         self.next_slot.set(None);
     }
 
-    fn invalidate(&self) {
+    fn on_structure_change(&self) {
         // Keep `len` (it is still correct); only invalidate tail slot.
         self.next_slot.set(None);
     }

@@ -317,7 +317,7 @@ where
     pub fn clear(&mut self) {
         self.head_slot = NextSlot::new();
         self.cache_mode.on_clear();
-        self.cache_mode.invalidate();
+        self.cache_mode.on_structure_change();
     }
 }
 
@@ -398,7 +398,7 @@ where
         F: FnMut(Box<Cons<T, T, A>, A>) -> U,
     {
         // Any structural change through `&mut self` invalidates the cached tail slot.
-        self.cache_mode.invalidate();
+        self.cache_mode.on_structure_change();
 
         let mut next_cell = &mut self.head_slot;
         while let Some(next_ref) = next_cell.get() {

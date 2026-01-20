@@ -22,10 +22,15 @@ pub(crate) trait OnceCellExt<T> {
 #[cfg(not(feature = "nightly"))]
 impl<T> OnceCellExt<T> for OnceCell<T> {
     fn try_insert2(&self, value: T) -> Result<&T, (&T, T)> {
-        // Both unsafe blocks are safe because it's sure the cell value is set.
         match self.set(value) {
-            Ok(()) => Ok(unsafe { self.get().unwrap_unchecked() }),
-            Err(value) => Err((unsafe { self.get().unwrap_unchecked() }, value)),
+            Ok(()) => match self.get() {
+                Some(r) => Ok(r),
+                None => unreachable!("OnceCell was just set but returned None"),
+            },
+            Err(value) => match self.get() {
+                Some(r) => Err((r, value)),
+                None => unreachable!("OnceCell::set returned Err but cell has no value"),
+            },
         }
     }
 }

@@ -362,13 +362,13 @@ where
         P: FnMut(&T) -> Option<&U>,
     {
         use ::allocator_api2::alloc;
+        use ::std::cell::Cell;
 
-        let found_sized_ptr: OnceCell<*const U> = OnceCell::new();
+        let found_sized_ptr: Cell<Option<*const U>> = Cell::new(None);
         self.remove_inner(
             |val| {
                 if let Some(val) = pred(val) {
-                    // We only set the value once, so this is safe.
-                    found_sized_ptr.set(val as *const U).unwrap();
+                    found_sized_ptr.set(Some(val as *const U));
                     true
                 } else {
                     false
@@ -378,8 +378,11 @@ where
                 // Given the boxed cons with the unsized value type `T`,
                 // and returns the sized type value `U` by value (i.e. out of the box).
 
-                // We are sure the `found_sized_ptr` is set.
-                let found_sized_ptr: *const U = *found_sized_ptr.get().unwrap();
+                // We are sure the `found_sized_ptr` is set when `remove_inner` calls this closure.
+                let found_sized_ptr: *const U = match found_sized_ptr.get() {
+                    Some(p) => p,
+                    None => unreachable!("remove_unsized_as: missing found pointer"),
+                };
 
                 let cons_layout = alloc::Layout::for_value::<Cons<T, T, A>>(&boxed_cons);
                 let (cons_ptr, alloc) = Box::into_non_null_with_allocator(boxed_cons);
@@ -412,7 +415,9 @@ where
         while let Some(next_ref) = next_cell.get() {
             if pred(&next_ref.val) {
                 // Safe because we are sure the `next_cell` value is set.
-                let mut next_box = next_cell.take().unwrap();
+                let Some(mut next_box) = next_cell.take() else {
+                    unreachable!("remove_inner: next_cell had value but take() returned None");
+                };
 
                 // reconnect the list
                 if let Some(next_next) = next_box.next.take() {
@@ -423,7 +428,10 @@ where
                 return Some(f(next_box));
             }
             // Safe because we are sure the `next_cell` value is set.
-            next_cell = &mut next_cell.get_mut().unwrap().next;
+            let Some(next_box) = next_cell.get_mut() else {
+                unreachable!("remove_inner: next_cell had value but get_mut() returned None");
+            };
+            next_cell = &mut next_box.next;
         }
         None
     }
@@ -563,10 +571,20 @@ where
 impl<T> FromIterator<T> for OnceListCore<T, Global, NoCache> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
         let list = Self::new();
-        let mut last_cell = &list.head_slot;
+        let mut next_cell = &list.head_slot;
         for val in iter {
-            let _ = last_cell.set(Box::new(Cons::new(val)));
-            last_cell = &unsafe { &last_cell.get().unwrap_unchecked() }.next;
+            let new_cons = Box::new(Cons::new(val));
+            match next_cell.try_insert2(new_cons) {
+                Ok(inserted) => {
+                    next_cell = &inserted.next;
+                }
+                Err((_cur, _new_cons)) => {
+                    // This list is freshly created and not shared, so there should be no contention.
+                    unreachable!(
+                        "FromIterator: unexpected contention when inserting into a new list"
+                    );
+                }
+            }
         }
         list
     }

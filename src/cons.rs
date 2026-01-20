@@ -78,7 +78,10 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
         let layout = alloc::Layout::for_value::<T>(&self.val);
         let metadata = metadata(&self.val);
         let (raw_cons, alloc) = Box::into_raw_with_allocator(self);
-        let dst = alloc.allocate(layout).unwrap();
+        let dst = match alloc.allocate(layout) {
+            Ok(dst) => dst,
+            Err(_) => ::std::alloc::handle_alloc_error(layout),
+        };
 
         // Make sure to drop the `cons`'s unused fields.
         let Cons { next, val } = unsafe { &*raw_cons };
@@ -96,7 +99,11 @@ impl<T: ?Sized, A: Allocator> Cons<T, T, A> {
 
         // Free the `cons`'s memory. Not `drop` because we already dropped the fields.
         unsafe {
-            alloc.deallocate(NonNull::new(raw_cons).unwrap().cast(), cons_layout);
+            let raw_cons = match NonNull::new(raw_cons) {
+                Some(p) => p,
+                None => unreachable!("Box::into_raw_with_allocator returned null"),
+            };
+            alloc.deallocate(raw_cons.cast(), cons_layout);
         }
 
         // Create a new fat pointer for dst by combining the thin pointer and the metadata.

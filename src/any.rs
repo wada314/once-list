@@ -53,7 +53,10 @@ where
         self.push_inner(
             unsized_box,
             // Safe because we know the given value is type `T`.
-            |c| c.downcast_ref::<T>().unwrap(),
+            |c| match c.downcast_ref::<T>() {
+                Some(v) => v,
+                None => unreachable!("push_any inserted a value of a different type"),
+            },
         )
     }
 }
@@ -109,7 +112,10 @@ where
                 // Drop the `next` field.
                 unsafe { ::std::ptr::read(next_ref) };
 
-                let val_ref = <dyn Any>::downcast_ref::<T>(val_any_ref).unwrap();
+                let val_ref = match <dyn Any>::downcast_ref::<T>(val_any_ref) {
+                    Some(v) => v,
+                    None => unreachable!("remove_by_type predicate matched but downcast failed"),
+                };
                 let val = unsafe { ::std::ptr::read(val_ref) };
 
                 unsafe {

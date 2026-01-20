@@ -12,4 +12,7 @@
   - `CacheMode::invalidate()` -> `CacheMode::on_structure_change()`
 - Made CacheMode hook defaults consistent:
   - `CacheMode::on_push_success()` now has a default no-op implementation (like `on_remove_success` / `on_clear`)
+- Removed redundant list constructors from cache mode types:
+  - Dropped `WithTail::{new_list,new_list_in}`, `WithLen::{new_list,new_list_in}`, `WithTailLen::{new_list,new_list_in}`
+  - Docs now point to `OnceListWith*::{new,new_in}` instead.
 

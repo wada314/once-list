@@ -63,18 +63,18 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 ///   - `push()`: O(n), `len()`: O(n)
 ///
 /// - **Len cache** (O(1) `len()`):
-///   - `once_list2::OnceListWithLen<T, A>`
-///   - or `once_list2::WithLen::<T, A>::new_list()` / `new_list_in(alloc)`
+///   - Type: `once_list2::OnceListWithLen<T, A>`
+///   - Constructors: `OnceListWithLen::<T>::new()` / `OnceListWithLen::<T, A>::new_in(alloc)`
 ///
 /// - **Tail cache** (fast repeated tail inserts):
-///   - `once_list2::OnceListWithTail<T, A>`
-///   - or `once_list2::WithTail::<T, A>::new_list()` / `new_list_in(alloc)`
+///   - Type: `once_list2::OnceListWithTail<T, A>`
+///   - Constructors: `OnceListWithTail::<T>::new()` / `OnceListWithTail::<T, A>::new_in(alloc)`
 ///   - Note: This mode caches the *next insertion slot* and speeds up operations that need to find
 ///     the tail insertion point (e.g. `push()` / `extend()`), but it does not make `last()` O(1).
 ///
 /// - **Tail + len cache**:
-///   - `once_list2::OnceListWithTailLen<T, A>`
-///   - or `once_list2::WithTailLen::<T, A>::new_list()` / `new_list_in(alloc)`
+///   - Type: `once_list2::OnceListWithTailLen<T, A>`
+///   - Constructors: `OnceListWithTailLen::<T>::new()` / `OnceListWithTailLen::<T, A>::new_in(alloc)`
 ///
 /// These modes keep the same behavior guarantees (including the iterator observing newly pushed values).
 ///

@@ -6,9 +6,9 @@ use ::std::ptr::NonNull;
 
 use crate::cache_mode::CacheMode;
 use crate::cons::Cons;
-use crate::once_list::OnceList;
+use crate::once_list::OnceListCore;
 
-impl<A: Allocator + Clone, M> OnceList<dyn Any, A, M>
+impl<A: Allocator + Clone, M> OnceListCore<dyn Any, A, M>
 where
     M: CacheMode<dyn Any, A>,
 {
@@ -44,7 +44,7 @@ where
     }
 }
 
-impl<A: Allocator, M> OnceList<dyn Any, A, M>
+impl<A: Allocator, M> OnceListCore<dyn Any, A, M>
 where
     M: CacheMode<dyn Any, A>,
 {

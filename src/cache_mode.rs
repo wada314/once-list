@@ -5,7 +5,7 @@ use ::std::cell::Cell;
 use ::std::ptr::NonNull;
 
 use crate::cons::Cons;
-use crate::once_list::OnceList;
+use crate::once_list::OnceListCore;
 use crate::oncecell_ext::OnceCellExt;
 use crate::OnceCell;
 
@@ -148,8 +148,8 @@ impl<T: ?Sized, A: Allocator> WithTail<T, A> {
 
 impl<T: ?Sized> WithTail<T, Global> {
     /// Creates a new empty list using this cache mode.
-    pub fn new_list() -> OnceList<T, Global, WithTail<T, Global>> {
-        OnceList {
+    pub fn new_list() -> OnceListCore<T, Global, WithTail<T, Global>> {
+        OnceListCore {
             head: TailSlot::new(),
             alloc: Global,
             mode: WithTail::new(),
@@ -159,8 +159,8 @@ impl<T: ?Sized> WithTail<T, Global> {
 
 impl<T: ?Sized, A: Allocator> WithTail<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
-    pub fn new_list_in(alloc: A) -> OnceList<T, A, WithTail<T, A>> {
-        OnceList {
+    pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithTail<T, A>> {
+        OnceListCore {
             head: TailSlot::new(),
             alloc,
             mode: WithTail::new(),
@@ -222,8 +222,8 @@ impl<T: ?Sized, A: Allocator> WithLen<T, A> {
 
 impl<T: ?Sized> WithLen<T, Global> {
     /// Creates a new empty list using this cache mode.
-    pub fn new_list() -> OnceList<T, Global, WithLen<T, Global>> {
-        OnceList {
+    pub fn new_list() -> OnceListCore<T, Global, WithLen<T, Global>> {
+        OnceListCore {
             head: TailSlot::new(),
             alloc: Global,
             mode: WithLen::new(),
@@ -233,8 +233,8 @@ impl<T: ?Sized> WithLen<T, Global> {
 
 impl<T: ?Sized, A: Allocator> WithLen<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
-    pub fn new_list_in(alloc: A) -> OnceList<T, A, WithLen<T, A>> {
-        OnceList {
+    pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithLen<T, A>> {
+        OnceListCore {
             head: TailSlot::new(),
             alloc,
             mode: WithLen::new(),
@@ -307,8 +307,8 @@ impl<T: ?Sized, A: Allocator> WithTailLen<T, A> {
 
 impl<T: ?Sized> WithTailLen<T, Global> {
     /// Creates a new empty list using this cache mode.
-    pub fn new_list() -> OnceList<T, Global, WithTailLen<T, Global>> {
-        OnceList {
+    pub fn new_list() -> OnceListCore<T, Global, WithTailLen<T, Global>> {
+        OnceListCore {
             head: TailSlot::new(),
             alloc: Global,
             mode: WithTailLen::new(),
@@ -318,8 +318,8 @@ impl<T: ?Sized> WithTailLen<T, Global> {
 
 impl<T: ?Sized, A: Allocator> WithTailLen<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
-    pub fn new_list_in(alloc: A) -> OnceList<T, A, WithTailLen<T, A>> {
-        OnceList {
+    pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithTailLen<T, A>> {
+        OnceListCore {
             head: TailSlot::new(),
             alloc,
             mode: WithTailLen::new(),

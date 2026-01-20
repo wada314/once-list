@@ -51,19 +51,19 @@ use crate::iter::{IntoIter, Iter, IterMut};
 ///   - `push()`: O(n), `len()`: O(n)
 ///
 /// - **Len cache** (O(1) `len()`):
-///   - `OnceList::new_with_len()`
-///   - `OnceList::new_in_with_len(alloc)`
+///   - `OnceList::new_with_len()` / `OnceList::new_in_with_len(alloc)`
 ///   - `once_list2::OnceListWithLen<T, A>`
+///   - or `once_list2::WithLen::<T, A>::new_list()` / `new_list_in(alloc)`
 ///
 /// - **Tail cache** (fast repeated tail appends):
-///   - `OnceList::new_with_tail()`
-///   - `OnceList::new_in_with_tail(alloc)`
+///   - `OnceList::new_with_tail()` / `OnceList::new_in_with_tail(alloc)`
 ///   - `once_list2::OnceListWithTail<T, A>`
+///   - or `once_list2::WithTail::<T, A>::new_list()` / `new_list_in(alloc)`
 ///
 /// - **Tail + len cache**:
-///   - `OnceList::new_with_tail_len()`
-///   - `OnceList::new_in_with_tail_len(alloc)`
+///   - `OnceList::new_with_tail_len()` / `OnceList::new_in_with_tail_len(alloc)`
 ///   - `once_list2::OnceListWithTailLen<T, A>`
+///   - or `once_list2::WithTailLen::<T, A>::new_list()` / `new_list_in(alloc)`
 ///
 /// These modes keep the same behavior guarantees (including the iterator observing newly pushed values).
 ///

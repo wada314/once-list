@@ -46,102 +46,64 @@ mod tests {
     use super::*;
     use ::std::hash::Hash;
 
-    macro_rules! for_each_i32_list {
-        (|$list:ident| $body:block) => {{
-            {
-                let $list = OnceList::<i32>::new();
-                $body
+    use ::allocator_api2::alloc::Global;
+
+    use crate::cache_mode::{CacheMode, NoCache, WithLen, WithTail, WithTailLen};
+    use crate::once_list::OnceListCore;
+
+    /// Cache-modes (not list types) we can construct for tests.
+    ///
+    /// This keeps the list type as `OnceListCore<i32, Global, M>` and still gives you the mode
+    /// (and therefore variant) in backtraces: `run::<WithTailLen<i32, Global>>()` etc.
+    trait I32Mode: CacheMode<i32, Global> + Clone {
+        fn new_list() -> OnceListCore<i32, Global, Self>;
+    }
+
+    impl I32Mode for NoCache {
+        fn new_list() -> OnceListCore<i32, Global, Self> {
+            OnceListCore::<i32, Global, NoCache>::new()
+        }
+    }
+    impl I32Mode for WithLen<i32, Global> {
+        fn new_list() -> OnceListCore<i32, Global, Self> {
+            OnceListCore::<i32, Global, WithLen<i32, Global>>::new()
+        }
+    }
+    impl I32Mode for WithTail<i32, Global> {
+        fn new_list() -> OnceListCore<i32, Global, Self> {
+            OnceListCore::<i32, Global, WithTail<i32, Global>>::new()
+        }
+    }
+    impl I32Mode for WithTailLen<i32, Global> {
+        fn new_list() -> OnceListCore<i32, Global, Self> {
+            OnceListCore::<i32, Global, WithTailLen<i32, Global>>::new()
+        }
+    }
+
+    // Defines a `#[test] fn ...()` and, inside it, a monomorphized helper `run::<L>()`.
+    // This keeps per-variant type information in backtraces without extra panic plumbing.
+    macro_rules! test_all_i32_variants {
+        (fn $test_name:ident($list:ident) $body:block) => {
+            #[test]
+            fn $test_name() {
+                fn run<M: I32Mode>() {
+                    let $list: OnceListCore<i32, Global, M> = M::new_list();
+                    $body
+                }
+
+                run::<NoCache>();
+                run::<WithLen<i32, Global>>();
+                run::<WithTail<i32, Global>>();
+                run::<WithTailLen<i32, Global>>();
             }
-            {
-                let $list = OnceListWithLen::<i32>::new();
-                $body
-            }
-            {
-                let $list = OnceListWithTail::<i32>::new();
-                $body
-            }
-            {
-                let $list = OnceListWithTailLen::<i32>::new();
-                $body
-            }
-        }};
+        };
     }
 
-    #[test]
-    fn test_iter_sees_push_after_exhausted() {
-        for_each_i32_list!(|list| {
-            list.push(1);
-
-            let mut it = list.iter();
-            assert_eq!(it.next(), Some(&1));
-            assert_eq!(it.next(), None);
-
-            // After the iterator reached the end, pushing a new element should make it visible
-            // from the same iterator.
-            list.push(2);
-            assert_eq!(it.next(), Some(&2));
-            assert_eq!(it.next(), None);
-        });
-    }
-
-    #[test]
-    fn test_iter_sees_extend_after_exhausted() {
-        for_each_i32_list!(|list| {
-            list.push(1);
-
-            let mut it = list.iter();
-            assert_eq!(it.next(), Some(&1));
-            assert_eq!(it.next(), None);
-
-            // Same property should hold for `extend()` as well.
-            list.extend([2, 3]);
-            assert_eq!(it.next(), Some(&2));
-            assert_eq!(it.next(), Some(&3));
-            assert_eq!(it.next(), None);
-        });
-    }
-
-    #[test]
-    fn test_iter_mut_allows_in_place_update() {
-        for_each_i32_list!(|list| {
-            let mut list = list;
-            list.extend([1, 2, 3]);
-            for v in list.iter_mut() {
-                *v += 10;
-            }
-            assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
-        });
-    }
-
-    #[test]
-    fn test_iter_mut_empty_and_singleton() {
-        // Empty list
-        for_each_i32_list!(|list| {
-            let mut empty = list;
-            let mut it = empty.iter_mut();
-            assert!(it.next().is_none());
-        });
-
-        // Singleton list
-        for_each_i32_list!(|list| {
-            let mut single = list;
-            single.push(1);
-            let mut it = single.iter_mut();
-            let v = it.next().unwrap();
-            *v = 2;
-            assert!(it.next().is_none());
-            assert_eq!(single.into_iter().collect::<Vec<_>>(), vec![2]);
-        });
-    }
-
-    #[test]
-    fn test_new() {
-        for_each_i32_list!(|list| {
-            assert!(list.is_empty());
-            assert_eq!(list.len(), 0);
-            assert_eq!(list.iter().next(), None);
-        });
-    }
+    test_all_i32_variants!(fn test_new(list) {
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.iter().next(), None);
+    });
 
     #[test]
     fn test_default() {
@@ -153,21 +115,6 @@ mod tests {
     }
 
     #[test]
-    fn test_push() {
-        for_each_i32_list!(|list| {
-            let val = list.push(42);
-            assert_eq!(val, &42);
-            assert_eq!(list.len(), 1);
-            assert_eq!(list.clone().into_iter().collect::<Vec<_>>(), vec![42]);
-
-            list.push(100);
-            list.push(3);
-            assert_eq!(list.len(), 3);
-            assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![42, 100, 3]);
-        });
-    }
-
-    #[test]
     fn test_from_iter() {
         // `FromIterator` is implemented only for the default mode (`OnceList`).
         let list = [1, 2, 3].into_iter().collect::<OnceList<_>>();
@@ -175,144 +122,178 @@ mod tests {
         assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
 
         // For other modes, build via `extend` and assert the same semantics.
-        for_each_i32_list!(|list| {
-            let list = list;
+        fn run<M: I32Mode>() {
+            let list: OnceListCore<i32, Global, M> = M::new_list();
             list.extend([1, 2, 3]);
             assert_eq!(list.len(), 3);
             assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![1, 2, 3]);
-        });
+        }
+        run::<NoCache>();
+        run::<WithLen<i32, Global>>();
+        run::<WithTail<i32, Global>>();
+        run::<WithTailLen<i32, Global>>();
     }
 
-    #[test]
-    fn test_extend() {
-        for_each_i32_list!(|list| {
-            list.extend([1, 2, 3]);
-            list.extend([4, 5, 6]);
-            assert_eq!(list.len(), 6);
-            assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![1, 2, 3, 4, 5, 6]);
-        });
-    }
+    test_all_i32_variants!(fn test_push(list) {
+        let val = list.push(42);
+        assert_eq!(val, &42);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.clone().into_iter().collect::<Vec<_>>(), vec![42]);
 
-    #[test]
-    fn test_clear() {
-        for_each_i32_list!(|list| {
-            let mut list = list;
-            list.extend([1, 2, 3]);
-            list.clear();
-            assert!(list.is_empty());
-            assert_eq!(list.len(), 0);
-            assert_eq!(list.iter().next(), None);
-        });
-    }
+        list.push(100);
+        list.push(3);
+        assert_eq!(list.len(), 3);
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![42, 100, 3]);
+    });
 
-    #[test]
-    fn test_first_last() {
-        for_each_i32_list!(|list| {
-            let empty_list = list;
-            assert_eq!(empty_list.first(), None);
-            assert_eq!(empty_list.last(), None);
-        });
+    test_all_i32_variants!(fn test_extend(list) {
+        list.extend([1, 2, 3]);
+        list.extend([4, 5, 6]);
+        assert_eq!(list.len(), 6);
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![1, 2, 3, 4, 5, 6]);
+    });
 
-        for_each_i32_list!(|list| {
-            let single_list = list;
-            single_list.push(42);
-            assert_eq!(single_list.first(), Some(&42));
-            assert_eq!(single_list.last(), Some(&42));
-        });
+    test_all_i32_variants!(fn test_clear(list) {
+        let mut list = list;
+        list.extend([1, 2, 3]);
+        list.clear();
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.iter().next(), None);
+    });
 
-        for_each_i32_list!(|list| {
-            let multiple_list = list;
-            multiple_list.extend([1, 2, 3]);
-            assert_eq!(multiple_list.first(), Some(&1));
-            assert_eq!(multiple_list.last(), Some(&3));
-        });
-    }
+    test_all_i32_variants!(fn test_first_last(list) {
+        assert_eq!(list.first(), None);
+        assert_eq!(list.last(), None);
 
-    #[test]
-    fn test_contains() {
-        for_each_i32_list!(|list| {
-            let list = list;
-            list.extend([1, 2, 3]);
-            assert!(list.contains(&1));
-            assert!(list.contains(&2));
-            assert!(list.contains(&3));
-            assert!(!list.contains(&0));
-            assert!(!list.contains(&4));
-        });
+        list.push(42);
+        assert_eq!(list.first(), Some(&42));
+        assert_eq!(list.last(), Some(&42));
 
-        for_each_i32_list!(|list| {
-            let empty_list = list;
-            assert!(!empty_list.contains(&1));
-        });
-    }
+        list.extend([1, 2, 3]);
+        assert_eq!(list.first(), Some(&42));
+        assert_eq!(list.last(), Some(&3));
+    });
 
-    #[test]
-    fn test_remove() {
-        for_each_i32_list!(|list| {
-            let mut list = list;
-            list.extend([1, 2, 3]);
-            assert_eq!(list.remove(|&v| v == 2), Some(2));
-            assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &3]);
+    test_all_i32_variants!(fn test_contains(list) {
+        list.extend([1, 2, 3]);
+        assert!(list.contains(&1));
+        assert!(list.contains(&2));
+        assert!(list.contains(&3));
+        assert!(!list.contains(&0));
+        assert!(!list.contains(&4));
+    });
 
-            assert_eq!(list.remove(|&v| v == 0), None);
-            assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &3]);
+    test_all_i32_variants!(fn test_remove(list) {
+        let mut list = list;
+        list.extend([1, 2, 3]);
+        assert_eq!(list.remove(|&v| v == 2), Some(2));
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &3]);
 
-            assert_eq!(list.remove(|&v| v == 1), Some(1));
-            assert_eq!(list.iter().collect::<Vec<_>>(), vec![&3]);
+        assert_eq!(list.remove(|&v| v == 0), None);
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&1, &3]);
 
-            assert_eq!(list.remove(|&v| v == 3), Some(3));
-            assert!(list.is_empty());
-        });
-    }
+        assert_eq!(list.remove(|&v| v == 1), Some(1));
+        assert_eq!(list.iter().collect::<Vec<_>>(), vec![&3]);
 
-    #[test]
-    fn test_eq() {
-        for_each_i32_list!(|list1| {
-            let list1 = list1;
-            list1.extend([1, 2, 3]);
+        assert_eq!(list.remove(|&v| v == 3), Some(3));
+        assert!(list.is_empty());
+    });
 
-            let list2 = {
-                let l = OnceList::<i32>::new();
-                l.extend([1, 2, 3]);
-                l
-            };
-            assert_eq!(
-                list1.iter().collect::<Vec<_>>(),
-                list2.iter().collect::<Vec<_>>()
-            );
+    test_all_i32_variants!(fn test_iter_sees_push_after_exhausted(list) {
+        list.push(1);
 
-            let list3 = {
-                let l = OnceList::<i32>::new();
-                l.extend([1, 2, 4]);
-                l
-            };
-            assert_ne!(
-                list1.iter().collect::<Vec<_>>(),
-                list3.iter().collect::<Vec<_>>()
-            );
-        });
-    }
+        let mut it = list.iter();
+        assert_eq!(it.next(), Some(&1));
+        assert_eq!(it.next(), None);
 
-    #[test]
-    fn test_hash() {
+        // After the iterator reached the end, pushing a new element should make it visible
+        // from the same iterator.
+        list.push(2);
+        assert_eq!(it.next(), Some(&2));
+        assert_eq!(it.next(), None);
+    });
+
+    test_all_i32_variants!(fn test_iter_sees_extend_after_exhausted(list) {
+        list.push(1);
+
+        let mut it = list.iter();
+        assert_eq!(it.next(), Some(&1));
+        assert_eq!(it.next(), None);
+
+        // Same property should hold for `extend()` as well.
+        list.extend([2, 3]);
+        assert_eq!(it.next(), Some(&2));
+        assert_eq!(it.next(), Some(&3));
+        assert_eq!(it.next(), None);
+    });
+
+    test_all_i32_variants!(fn test_iter_mut_allows_in_place_update(list) {
+        let mut list = list;
+        list.extend([1, 2, 3]);
+        for v in list.iter_mut() {
+            *v += 10;
+        }
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
+    });
+
+    test_all_i32_variants!(fn test_iter_mut_empty_and_singleton(list) {
+        // Empty list
+        {
+            let mut empty = list;
+            let mut it = empty.iter_mut();
+            assert!(it.next().is_none());
+
+            // Singleton list (reuse the same list type/instance)
+            empty.push(1);
+            let mut it = empty.iter_mut();
+            let v = it.next().unwrap();
+            *v = 2;
+            assert!(it.next().is_none());
+            assert_eq!(empty.into_iter().collect::<Vec<_>>(), vec![2]);
+        }
+    });
+
+    test_all_i32_variants!(fn test_eq(list1) {
+        list1.extend([1, 2, 3]);
+
+        let list2 = {
+            let l = OnceList::<i32>::new();
+            l.extend([1, 2, 3]);
+            l
+        };
+        assert_eq!(
+            list1.iter().collect::<Vec<_>>(),
+            list2.iter().collect::<Vec<_>>()
+        );
+
+        let list3 = {
+            let l = OnceList::<i32>::new();
+            l.extend([1, 2, 4]);
+            l
+        };
+        assert_ne!(
+            list1.iter().collect::<Vec<_>>(),
+            list3.iter().collect::<Vec<_>>()
+        );
+    });
+
+    test_all_i32_variants!(fn test_hash(list1) {
         use ::std::hash::{DefaultHasher, Hasher};
-        for_each_i32_list!(|list1| {
-            let list1 = list1;
-            list1.extend([1, 2, 3]);
+        list1.extend([1, 2, 3]);
 
-            let list2 = {
-                let l = OnceList::<i32>::new();
-                l.extend([1, 2, 3]);
-                l
-            };
+        let list2 = {
+            let l = OnceList::<i32>::new();
+            l.extend([1, 2, 3]);
+            l
+        };
 
-            let mut hasher1 = DefaultHasher::new();
-            let mut hasher2 = DefaultHasher::new();
-            list1.hash(&mut hasher1);
-            list2.hash(&mut hasher2);
-            assert_eq!(hasher1.finish(), hasher2.finish());
-        });
-    }
+        let mut hasher1 = DefaultHasher::new();
+        let mut hasher2 = DefaultHasher::new();
+        list1.hash(&mut hasher1);
+        list2.hash(&mut hasher2);
+        assert_eq!(hasher1.finish(), hasher2.finish());
+    });
 
     #[test]
     #[cfg(feature = "nightly")]
@@ -399,4 +380,7 @@ mod tests {
         assert_eq!(list.iter().nth(0), Some(&[1] as &[i32]));
         assert_eq!(list.iter().nth(1), Some(&[4, 5, 6] as &[i32]));
     }
+
+    // (No special "variant labeling" test needed; the per-variant generic `run::<L>()`
+    // monomorphization will show `L` in backtraces when `RUST_BACKTRACE=1` is enabled.)
 }

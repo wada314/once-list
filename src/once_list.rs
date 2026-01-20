@@ -9,6 +9,8 @@ use ::std::ops::DerefMut;
 use crate::cache_mode::{CacheMode, NextSlot, NoCache, WithLen, WithTail, WithTailLen};
 use crate::cons::Cons;
 use crate::iter::{IntoIter, Iter, IterMut};
+#[cfg(feature = "nightly")]
+use crate::OnceCell;
 
 /// A single linked list which behaves like [`std::cell::OnceCell`], but for multiple values.
 ///
@@ -225,7 +227,7 @@ impl<T: ?Sized, A: Allocator> OnceListCore<T, A, NoCache> {
 impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
     /// Returns the number of values in the list.
     ///
-    /// - O(1) if the current mode caches length
+    /// - O(1) if the current cache mode caches length
     /// - O(n) otherwise
     pub fn len(&self) -> usize
     where

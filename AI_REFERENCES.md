@@ -15,4 +15,6 @@
 - Removed redundant list constructors from cache mode types:
   - Dropped `WithTail::{new_list,new_list_in}`, `WithLen::{new_list,new_list_in}`, `WithTailLen::{new_list,new_list_in}`
   - Docs now point to `OnceListWith*::{new,new_in}` instead.
+- Fixed feature-flag build:
+  - Enabling `nightly` failed due to missing `OnceCell` import in `remove_unsized_as`; added `#[cfg(feature="nightly")] use crate::OnceCell;` in `src/once_list.rs`.
 

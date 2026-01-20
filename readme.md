@@ -5,9 +5,9 @@ This library is a natural extension of the [`std::cell::OnceCell`] (or its origi
 
 If you need faster operations, consider enabling caching modes:
 
-- `OnceListWithLen<T, A>` / `OnceList::new_with_len()`: O(1) `len()`
-- `OnceListWithTail<T, A>` / `OnceList::new_with_tail()`: fast repeated tail appends
-- `OnceListWithTailLen<T, A>` / `OnceList::new_with_tail_len()`: both
+- `OnceListWithLen<T, A>`: O(1) `len()`
+- `OnceListWithTail<T, A>`: fast repeated tail inserts (e.g. `push()` / `extend()`); does not make `last()` O(1)
+- `OnceListWithTailLen<T, A>`: both (len O(1) + fast tail inserts)
 
 # Alternatives (Consider using these crates first!)
 

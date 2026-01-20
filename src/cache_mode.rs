@@ -64,8 +64,12 @@ pub trait CacheMode<T: ?Sized, A: Allocator>: sealed::Sealed + Clone {
         None
     }
 
-    /// Returns the slot to start inserting from.
-    fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A>;
+    /// Returns a cached tail insertion slot, if available.
+    ///
+    /// Returning `None` means the caller should fall back to scanning from the head.
+    fn tail_slot_opt<'a>(&'a self) -> Option<&'a TailSlot<T, A>> {
+        None
+    }
 
     /// Called after a push successfully inserted a node.
     fn on_push_success(&self, next_slot: &TailSlot<T, A>);
@@ -87,10 +91,6 @@ pub struct NoCache;
 impl sealed::Sealed for NoCache {}
 
 impl<T: ?Sized, A: Allocator> CacheMode<T, A> for NoCache {
-    fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A> {
-        head
-    }
-
     fn on_push_success(&self, _next_slot: &TailSlot<T, A>) {}
 
     fn invalidate(&self) {}
@@ -118,15 +118,15 @@ impl<T: ?Sized, A: Allocator> Clone for WithTail<T, A> {
 impl<T: ?Sized, A: Allocator> sealed::Sealed for WithTail<T, A> {}
 
 impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTail<T, A> {
-    fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A> {
+    fn tail_slot_opt<'a>(&'a self) -> Option<&'a TailSlot<T, A>> {
         if let Some(p) = self.next_slot.get() {
             let slot = unsafe { p.as_ref() };
             // Fast-path: if the cached slot is still empty, use it.
             if slot.get().is_none() {
-                return slot;
+                return Some(slot);
             }
         }
-        head
+        None
     }
 
     fn on_push_success(&self, next_slot: &TailSlot<T, A>) {
@@ -188,10 +188,6 @@ impl<T: ?Sized, A: Allocator> sealed::Sealed for WithLen<T, A> {}
 impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithLen<T, A> {
     fn cached_len(&self) -> Option<usize> {
         Some(self.len.get())
-    }
-
-    fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A> {
-        head
     }
 
     fn on_push_success(&self, _next_slot: &TailSlot<T, A>) {
@@ -266,14 +262,14 @@ impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithTailLen<T, A> {
         Some(self.len.get())
     }
 
-    fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A> {
+    fn tail_slot_opt<'a>(&'a self) -> Option<&'a TailSlot<T, A>> {
         if let Some(p) = self.next_slot.get() {
             let slot = unsafe { p.as_ref() };
             if slot.get().is_none() {
-                return slot;
+                return Some(slot);
             }
         }
-        head
+        None
     }
 
     fn on_push_success(&self, next_slot: &TailSlot<T, A>) {

@@ -6,6 +6,7 @@
   - Added `OnceListCore::{front, front_mut, back, back_mut}` as the preferred naming.
   - Kept `first/last` as compatibility aliases (delegating to `front/back`).
   - Added `OnceListCore::pop_front()` (implemented as `remove(|_| true)`).
+  - Added `OnceListCore::push_back()` as the preferred naming and kept `push()` as a compatibility alias.
 
 - Renamed `OnceListCore` internals for clarity:
   - `mode: M` -> `cache_mode: C`

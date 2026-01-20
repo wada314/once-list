@@ -76,7 +76,7 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 /// - **No cache (default)**:
 ///   - `OnceList::<T>::new()`
 ///   - `OnceList::<T, A>::new_in(alloc)`
-///   - `push()`: O(n), `len()`: O(n)
+///   - `push_back()`: O(n), `len()`: O(n)
 ///
 /// - **Len cache** (O(1) `len()`):
 ///   - Type: `once_list2::OnceListWithLen<T, A>`
@@ -86,7 +86,7 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 ///   - Type: `once_list2::OnceListWithTail<T, A>`
 ///   - Constructors: `OnceListWithTail::<T>::new()` / `OnceListWithTail::<T, A>::new_in(alloc)`
 ///   - Note: This mode caches the *next insertion slot* and speeds up operations that need to find
-///     the tail insertion point (e.g. `push()` / `extend()`), but it does not make `last()` O(1).
+///     the tail insertion point (e.g. `push_back()` / `extend()`), but it does not make `back()` O(1).
 ///
 /// - **Tail + len cache**:
 ///   - Type: `once_list2::OnceListWithTailLen<T, A>`
@@ -525,12 +525,19 @@ impl<T, A: Allocator + Clone, C> OnceListCore<T, A, C>
 where
     C: CacheMode<T, A>,
 {
+    /// Appends a value to the back of the list, and returns the reference to that value.
+    ///
+    /// Note that this method takes `&self`, not `&mut self`.
+    pub fn push_back(&self, val: T) -> &T {
+        let boxed_cons = Box::new_in(Cons::new(val), A::clone(&self.alloc));
+        self.push_inner(boxed_cons, |c| c)
+    }
+
     /// Appends a value to the list, and returns the reference to that value.
     ///
     /// Note that this method takes `&self`, not `&mut self`.
     pub fn push(&self, val: T) -> &T {
-        let boxed_cons = Box::new_in(Cons::new(val), A::clone(&self.alloc));
-        self.push_inner(boxed_cons, |c| c)
+        self.push_back(val)
     }
 
     /// An almost same method with the [`std::iter::Extend::extend`],

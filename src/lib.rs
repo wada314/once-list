@@ -135,13 +135,13 @@ mod tests {
     }
 
     test_all_i32_variants!(fn test_push(list) {
-        let val = list.push(42);
+        let val = list.push_back(42);
         assert_eq!(val, &42);
         assert_eq!(list.len(), 1);
         assert_eq!(list.clone().into_iter().collect::<Vec<_>>(), vec![42]);
 
-        list.push(100);
-        list.push(3);
+        list.push_back(100);
+        list.push_back(3);
         assert_eq!(list.len(), 3);
         assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![42, 100, 3]);
     });
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(list.front(), None);
         assert_eq!(list.back(), None);
 
-        list.push(42);
+        list.push_back(42);
         assert_eq!(list.front(), Some(&42));
         assert_eq!(list.back(), Some(&42));
 
@@ -222,7 +222,7 @@ mod tests {
     });
 
     test_all_i32_variants!(fn test_iter_sees_push_after_exhausted(list) {
-        list.push(1);
+        list.push_back(1);
 
         let mut it = list.iter();
         assert_eq!(it.next(), Some(&1));
@@ -230,13 +230,13 @@ mod tests {
 
         // After the iterator reached the end, pushing a new element should make it visible
         // from the same iterator.
-        list.push(2);
+        list.push_back(2);
         assert_eq!(it.next(), Some(&2));
         assert_eq!(it.next(), None);
     });
 
     test_all_i32_variants!(fn test_iter_sees_extend_after_exhausted(list) {
-        list.push(1);
+        list.push_back(1);
 
         let mut it = list.iter();
         assert_eq!(it.next(), Some(&1));
@@ -266,7 +266,7 @@ mod tests {
             assert!(it.next().is_none());
 
             // Singleton list (reuse the same list type/instance)
-            empty.push(1);
+            empty.push_back(1);
             let mut it = empty.iter_mut();
             let v = it.next().unwrap();
             *v = 2;

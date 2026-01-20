@@ -80,11 +80,11 @@ pub trait CacheMode<T: ?Sized, A: Allocator>: sealed::Sealed + Clone {
 
 /// No caching. This is the original behavior.
 #[derive(Clone, Copy)]
-pub struct NoTail;
+pub struct NoCache;
 
-impl sealed::Sealed for NoTail {}
+impl sealed::Sealed for NoCache {}
 
-impl<T: ?Sized, A: Allocator> CacheMode<T, A> for NoTail {
+impl<T: ?Sized, A: Allocator> CacheMode<T, A> for NoCache {
     fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A> {
         head
     }
@@ -140,6 +140,58 @@ impl<T: ?Sized, A: Allocator> WithTail<T, A> {
     pub(crate) fn new() -> Self {
         Self {
             next_slot: Cell::new(None),
+        }
+    }
+}
+
+/// Len-only caching mode (single-thread oriented).
+pub struct WithLen<T: ?Sized, A: Allocator> {
+    len: Cell<usize>,
+    _phantom: ::std::marker::PhantomData<fn(&T, &A)>,
+}
+
+impl<T: ?Sized, A: Allocator> Clone for WithLen<T, A> {
+    fn clone(&self) -> Self {
+        Self {
+            len: Cell::new(self.len.get()),
+            _phantom: ::std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: ?Sized, A: Allocator> sealed::Sealed for WithLen<T, A> {}
+
+impl<T: ?Sized, A: Allocator> CacheMode<T, A> for WithLen<T, A> {
+    fn cached_len(&self) -> Option<usize> {
+        Some(self.len.get())
+    }
+
+    fn start_slot<'a>(&'a self, head: &'a TailSlot<T, A>) -> &'a TailSlot<T, A> {
+        head
+    }
+
+    fn on_push_success(&self, _next_slot: &TailSlot<T, A>) {
+        self.len.set(self.len.get() + 1);
+    }
+
+    fn on_remove_success(&self) {
+        self.len.set(self.len.get() - 1);
+    }
+
+    fn on_clear(&self) {
+        self.len.set(0);
+    }
+
+    fn invalidate(&self) {
+        // Nothing to invalidate.
+    }
+}
+
+impl<T: ?Sized, A: Allocator> WithLen<T, A> {
+    pub(crate) fn new() -> Self {
+        Self {
+            len: Cell::new(0),
+            _phantom: ::std::marker::PhantomData,
         }
     }
 }

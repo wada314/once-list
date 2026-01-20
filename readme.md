@@ -3,7 +3,11 @@
 
 This library is a natural extension of the [`std::cell::OnceCell`] (or its original crate [`once_cell`]) library. This library provides a single-linked list [`OnceList`] type that allows you to store multiple values in a single [`OnceList`] instance even without the need for the mutability.
 
-If you need repeated tail appends, consider using the with-tail variant (`OnceList::new_with_tail()`, `OnceList::new_in_with_tail()`, or `OnceListWithTail<T, A>`), which optimizes the common append path in single-threaded use cases.
+If you need faster operations, consider enabling caching modes:
+
+- `OnceListWithLen<T, A>` / `OnceList::new_with_len()`: O(1) `len()`
+- `OnceListWithTail<T, A>` / `OnceList::new_with_tail()`: fast repeated tail appends
+- `OnceListWithTailLen<T, A>` / `OnceList::new_with_tail_len()`: both
 
 # Alternatives (Consider using these crates first!)
 

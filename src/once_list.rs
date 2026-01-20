@@ -6,7 +6,7 @@ use ::std::hash::Hash;
 use ::std::marker::Unsize;
 use ::std::ops::DerefMut;
 
-use crate::cache_mode::{CacheMode, NoTail, TailSlot, WithTail, WithTailLen};
+use crate::cache_mode::{CacheMode, NoCache, TailSlot, WithLen, WithTail, WithTailLen};
 use crate::cons::Cons;
 use crate::iter::{IntoIter, Iter, IterMut};
 
@@ -41,16 +41,31 @@ use crate::iter::{IntoIter, Iter, IterMut};
 /// assert_eq!(list_mut.iter().copied().collect::<Vec<_>>(), vec![1, 3, 4, 5]);
 /// ```
 ///
-/// # Tail caching (optional)
+/// # Caching modes (optional)
 ///
-/// By default, `push()` is O(n). If you need repeated tail appends, use the with-tail variant:
+/// You can choose a mode depending on what you want to optimize:
 ///
-/// - `OnceList::new_with_tail()`
-/// - `OnceList::new_in_with_tail(alloc)`
-/// - `once_list2::OnceListWithTail<T, A>`
+/// - **No cache (default)**:
+///   - `OnceList::<T>::new()`
+///   - `OnceList::<T, A>::new_in(alloc)`
+///   - `push()`: O(n), `len()`: O(n)
 ///
-/// This keeps the same behavior guarantees (including the iterator observing newly pushed values),
-/// but optimizes the common append path to (amortized) O(1) in single-threaded use cases.
+/// - **Len cache** (O(1) `len()`):
+///   - `OnceList::new_with_len()`
+///   - `OnceList::new_in_with_len(alloc)`
+///   - `once_list2::OnceListWithLen<T, A>`
+///
+/// - **Tail cache** (fast repeated tail appends):
+///   - `OnceList::new_with_tail()`
+///   - `OnceList::new_in_with_tail(alloc)`
+///   - `once_list2::OnceListWithTail<T, A>`
+///
+/// - **Tail + len cache**:
+///   - `OnceList::new_with_tail_len()`
+///   - `OnceList::new_in_with_tail_len(alloc)`
+///   - `once_list2::OnceListWithTailLen<T, A>`
+///
+/// These modes keep the same behavior guarantees (including the iterator observing newly pushed values).
 ///
 /// # Unsized types support
 ///
@@ -98,33 +113,43 @@ use crate::iter::{IntoIter, Iter, IterMut};
 /// ```
 /// [unsized types]: https://doc.rust-lang.org/book/ch19-04-advanced-types.html#dynamically-sized-types-and-the-sized-trait
 #[derive(Clone)]
-pub struct OnceList<T: ?Sized, A: Allocator = Global, M = NoTail> {
+pub struct OnceList<T: ?Sized, A: Allocator = Global, M = NoCache> {
     pub(crate) head: TailSlot<T, A>,
     pub(crate) alloc: A,
     pub(crate) mode: M,
 }
 
 pub type OnceListWithTail<T, A = Global> = OnceList<T, A, WithTail<T, A>>;
+pub type OnceListWithLen<T, A = Global> = OnceList<T, A, WithLen<T, A>>;
 pub type OnceListWithTailLen<T, A = Global> = OnceList<T, A, WithTailLen<T, A>>;
 
-impl<T: ?Sized> OnceList<T, Global, NoTail> {
+impl<T: ?Sized> OnceList<T, Global, NoCache> {
     /// Creates a new empty `OnceList`. This method does not allocate.
     pub fn new() -> Self {
         Self {
             head: TailSlot::new(),
             alloc: Global,
-            mode: NoTail,
+            mode: NoCache,
         }
     }
 }
 
-impl<T: ?Sized> OnceList<T, Global, NoTail> {
+impl<T: ?Sized> OnceList<T, Global, NoCache> {
     /// Creates a new empty `OnceList` with tail caching enabled.
     pub fn new_with_tail() -> OnceListWithTail<T, Global> {
         OnceList {
             head: TailSlot::new(),
             alloc: Global,
             mode: WithTail::new(),
+        }
+    }
+
+    /// Creates a new empty `OnceList` with length caching enabled.
+    pub fn new_with_len() -> OnceListWithLen<T, Global> {
+        OnceList {
+            head: TailSlot::new(),
+            alloc: Global,
+            mode: WithLen::new(),
         }
     }
 
@@ -138,13 +163,13 @@ impl<T: ?Sized> OnceList<T, Global, NoTail> {
     }
 }
 
-impl<T: ?Sized, A: Allocator> OnceList<T, A, NoTail> {
+impl<T: ?Sized, A: Allocator> OnceList<T, A, NoCache> {
     /// Creates a new empty `OnceList` with the given allocator. This method does not allocate.
     pub fn new_in(alloc: A) -> Self {
         Self {
             head: TailSlot::new(),
             alloc,
-            mode: NoTail,
+            mode: NoCache,
         }
     }
 
@@ -154,6 +179,15 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A, NoTail> {
             head: TailSlot::new(),
             alloc,
             mode: WithTail::new(),
+        }
+    }
+
+    /// Creates a new empty `OnceList` with the given allocator and length caching enabled.
+    pub fn new_in_with_len(alloc: A) -> OnceListWithLen<T, A> {
+        OnceList {
+            head: TailSlot::new(),
+            alloc,
+            mode: WithLen::new(),
         }
     }
 
@@ -443,7 +477,7 @@ where
     }
 }
 
-impl<T: ?Sized> Default for OnceList<T, Global, NoTail> {
+impl<T: ?Sized> Default for OnceList<T, Global, NoCache> {
     fn default() -> Self {
         Self::new()
     }
@@ -481,7 +515,7 @@ where
     }
 }
 
-impl<T> FromIterator<T> for OnceList<T, Global, NoTail> {
+impl<T> FromIterator<T> for OnceList<T, Global, NoCache> {
     fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
         let list = Self::new();
         let mut last_cell = &list.head;

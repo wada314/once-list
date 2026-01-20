@@ -123,7 +123,11 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 /// # }
 /// ```
 /// [unsized types]: https://doc.rust-lang.org/book/ch19-04-advanced-types.html#dynamically-sized-types-and-the-sized-trait
-#[doc(hidden)]
+///
+/// # Note about docs
+///
+/// The method implementations live on [`OnceListCore`]. The user-facing type aliases like
+/// [`OnceList`] and [`OnceListWithTail`] point to this type.
 #[derive(Clone)]
 pub struct OnceListCore<T: ?Sized, A: Allocator = Global, M = NoCache> {
     pub(crate) head: TailSlot<T, A>,

@@ -27,16 +27,17 @@ pub(crate) use ::std::cell::OnceCell;
 pub(crate) use ::std::sync::OnceLock as OnceCell;
 
 mod any;
+mod cache_mode;
 mod cons;
 mod iter;
 mod once_list;
 mod oncecell_ext;
-mod tail_mode;
 
+pub use crate::cache_mode::{NoTail, WithTail, WithTailLen};
 pub use crate::iter::{IntoIter, Iter, IterMut};
 pub use crate::once_list::OnceList;
 pub use crate::once_list::OnceListWithTail;
-pub use crate::tail_mode::{NoTail, WithTail};
+pub use crate::once_list::OnceListWithTailLen;
 
 #[cfg(test)]
 mod tests {

@@ -6,9 +6,9 @@ use ::std::hash::Hash;
 use ::std::marker::Unsize;
 use ::std::ops::DerefMut;
 
+use crate::cache_mode::{CacheMode, NoTail, TailSlot, WithTail, WithTailLen};
 use crate::cons::Cons;
 use crate::iter::{IntoIter, Iter, IterMut};
-use crate::tail_mode::{NoTail, TailMode, TailSlot, WithTail};
 
 /// A single linked list which behaves like [`std::cell::OnceCell`], but for multiple values.
 ///
@@ -98,14 +98,14 @@ use crate::tail_mode::{NoTail, TailMode, TailSlot, WithTail};
 /// ```
 /// [unsized types]: https://doc.rust-lang.org/book/ch19-04-advanced-types.html#dynamically-sized-types-and-the-sized-trait
 #[derive(Clone)]
-pub struct OnceList<T: ?Sized, A: Allocator = Global, M = NoTail>
-{
+pub struct OnceList<T: ?Sized, A: Allocator = Global, M = NoTail> {
     pub(crate) head: TailSlot<T, A>,
     pub(crate) alloc: A,
     pub(crate) mode: M,
 }
 
 pub type OnceListWithTail<T, A = Global> = OnceList<T, A, WithTail<T, A>>;
+pub type OnceListWithTailLen<T, A = Global> = OnceList<T, A, WithTailLen<T, A>>;
 
 impl<T: ?Sized> OnceList<T, Global, NoTail> {
     /// Creates a new empty `OnceList`. This method does not allocate.
@@ -125,6 +125,15 @@ impl<T: ?Sized> OnceList<T, Global, NoTail> {
             head: TailSlot::new(),
             alloc: Global,
             mode: WithTail::new(),
+        }
+    }
+
+    /// Creates a new empty `OnceList` with tail and length caching enabled.
+    pub fn new_with_tail_len() -> OnceListWithTailLen<T, Global> {
+        OnceList {
+            head: TailSlot::new(),
+            alloc: Global,
+            mode: WithTailLen::new(),
         }
     }
 }
@@ -147,11 +156,29 @@ impl<T: ?Sized, A: Allocator> OnceList<T, A, NoTail> {
             mode: WithTail::new(),
         }
     }
+
+    /// Creates a new empty `OnceList` with the given allocator and tail/len caching enabled.
+    pub fn new_in_with_tail_len(alloc: A) -> OnceListWithTailLen<T, A> {
+        OnceList {
+            head: TailSlot::new(),
+            alloc,
+            mode: WithTailLen::new(),
+        }
+    }
 }
 
 impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M> {
-    /// Returns the number of values in the list. This method is O(n).
-    pub fn len(&self) -> usize {
+    /// Returns the number of values in the list.
+    ///
+    /// - O(1) if the current mode caches length
+    /// - O(n) otherwise
+    pub fn len(&self) -> usize
+    where
+        M: CacheMode<T, A>,
+    {
+        if let Some(n) = self.mode.cached_len() {
+            return n;
+        }
         self.iter().count()
     }
 
@@ -229,18 +256,19 @@ impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M> {
 
 impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     /// Clears the list, dropping all values.
     pub fn clear(&mut self) {
         self.head = TailSlot::new();
+        self.mode.on_clear();
         self.mode.invalidate();
     }
 }
 
 impl<T: ?Sized, A: Allocator, M> OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     /// Removes the first value in the list that matches the predicate, and returns the value as a boxed value.
     ///
@@ -328,6 +356,7 @@ where
                     let _ = next_cell.set(next_next);
                 }
 
+                self.mode.on_remove_success();
                 return Some(f(next_box));
             }
             // Safe because we are sure the `next_cell` value is set.
@@ -339,7 +368,7 @@ where
 
 impl<T: ?Sized, A: Allocator + Clone, M> OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     /// An unsized version of the [`OnceList::push`] method.
     ///
@@ -374,7 +403,7 @@ where
 
 impl<T, A: Allocator, M> OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     /// Find a first value in the list matches the predicate, remove that item from the list,
     /// and then returns that value.
@@ -388,13 +417,13 @@ where
 
 impl<T, A: Allocator + Clone, M> OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     /// Appends a value to the list, and returns the reference to that value.
     ///
     /// Note that this method takes `&self`, not `&mut self`.
     pub fn push(&self, val: T) -> &T {
-        let boxed_cons = Box::new_in(Cons::new(val), self.alloc.clone());
+        let boxed_cons = Box::new_in(Cons::new(val), A::clone(&self.alloc));
         self.push_inner(boxed_cons, |c| c)
     }
 
@@ -422,7 +451,7 @@ impl<T: ?Sized> Default for OnceList<T, Global, NoTail> {
 
 impl<T: ?Sized + Debug, A: Allocator, M> Debug for OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
@@ -431,18 +460,18 @@ where
 
 impl<T: ?Sized + PartialEq, A: Allocator, M> PartialEq for OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     fn eq(&self, other: &Self) -> bool {
         self.iter().eq(other.iter())
     }
 }
 
-impl<T: ?Sized + Eq, A: Allocator, M> Eq for OnceList<T, A, M> where M: TailMode<T, A> {}
+impl<T: ?Sized + Eq, A: Allocator, M> Eq for OnceList<T, A, M> where M: CacheMode<T, A> {}
 
 impl<T: ?Sized + Hash, A: Allocator, M> Hash for OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
         state.write_usize(self.len());
@@ -466,7 +495,7 @@ impl<T> FromIterator<T> for OnceList<T, Global, NoTail> {
 
 impl<T, A: Allocator, M> IntoIterator for OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     type Item = T;
     type IntoIter = IntoIter<T, A>;
@@ -478,7 +507,7 @@ where
 
 impl<T, A: Allocator + Clone, M> Extend<T> for OnceList<T, A, M>
 where
-    M: TailMode<T, A>,
+    M: CacheMode<T, A>,
 {
     /// Due to the definition of the `Extend` trait, this method takes `&mut self`.
     /// Use the [`OnceList::extend`] method instead if you want to use `&self`.
@@ -487,4 +516,3 @@ where
         OnceList::<T, A, M>::extend(&*self, iter);
     }
 }
-

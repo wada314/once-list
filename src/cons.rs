@@ -4,7 +4,7 @@ use ::allocator_api2::boxed::Box;
 #[cfg(feature = "nightly")]
 use ::std::marker::Unsize;
 
-use crate::tail_mode::TailSlot;
+use crate::cache_mode::TailSlot;
 
 /// A single linked list node.
 ///

@@ -2,7 +2,7 @@ use ::allocator_api2::alloc::Allocator;
 use ::allocator_api2::alloc::Global;
 use ::allocator_api2::boxed::Box;
 
-use crate::tail_mode::TailSlot;
+use crate::cache_mode::TailSlot;
 
 /// An iterator over references in a [`crate::OnceList`].
 ///
@@ -17,7 +17,7 @@ pub struct Iter<'a, T: ?Sized, A: Allocator = Global> {
     pub(crate) next_slot: &'a TailSlot<T, A>,
 }
 
-impl<'a, T: ?Sized, A: Allocator> Iterator for Iter<'a, T, A> {
+impl<'a, T: ?Sized + 'a, A: Allocator> Iterator for Iter<'a, T, A> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -39,7 +39,7 @@ pub struct IterMut<'a, T: ?Sized, A: Allocator = Global> {
     pub(crate) next_slot: &'a mut TailSlot<T, A>,
 }
 
-impl<'a, T: ?Sized, A: Allocator> Iterator for IterMut<'a, T, A> {
+impl<'a, T: ?Sized + 'a, A: Allocator> Iterator for IterMut<'a, T, A> {
     type Item = &'a mut T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -75,4 +75,3 @@ impl<'a, T: ?Sized, A: Allocator> IterMut<'a, T, A> {
         Self { next_slot }
     }
 }
-

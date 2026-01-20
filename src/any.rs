@@ -4,13 +4,13 @@ use ::allocator_api2::boxed::Box;
 use ::std::any::Any;
 use ::std::ptr::NonNull;
 
+use crate::cache_mode::CacheMode;
 use crate::cons::Cons;
 use crate::once_list::OnceList;
-use crate::tail_mode::TailMode;
 
 impl<A: Allocator + Clone, M> OnceList<dyn Any, A, M>
 where
-    M: TailMode<dyn Any, A>,
+    M: CacheMode<dyn Any, A>,
 {
     /// Pushes an aribitrary value to the list, and returns the reference to that value.
     ///
@@ -46,7 +46,7 @@ where
 
 impl<A: Allocator, M> OnceList<dyn Any, A, M>
 where
-    M: TailMode<dyn Any, A>,
+    M: CacheMode<dyn Any, A>,
 {
     /// Finds the first value in the list that is the same type as `T`, and returns the reference to that value.
     ///
@@ -107,4 +107,3 @@ where
         )
     }
 }
-

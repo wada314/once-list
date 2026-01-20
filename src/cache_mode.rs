@@ -13,10 +13,15 @@ mod sealed {
     pub trait Sealed {}
 }
 
-/// A tail insertion slot.
+/// A "next node" slot (a thin wrapper around an internal `OnceCell`).
 ///
-/// This is a thin wrapper over an internal `OnceCell<Box<Cons<...>>>` so that mode APIs
-/// don't leak internal node types in public signatures.
+/// Despite the name `TailSlot`, this type is used for:
+/// - The list's **head slot** (a slot that points to the first node)
+/// - Each node's **next slot** (`node.next`)
+/// - Optional **tail insertion caching** (caching a pointer to some node's `next` slot)
+///
+/// The type name is historical: caching focuses on the tail insertion hot path, but the slot itself
+/// is conceptually "the next slot" in a singly-linked list.
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct TailSlot<T: ?Sized, A: Allocator> {
@@ -150,9 +155,9 @@ impl<T: ?Sized> WithTail<T, Global> {
     /// Creates a new empty list using this cache mode.
     pub fn new_list() -> OnceListCore<T, Global, WithTail<T, Global>> {
         OnceListCore {
-            head: TailSlot::new(),
+            head_slot: TailSlot::new(),
             alloc: Global,
-            mode: WithTail::new(),
+            cache_mode: WithTail::new(),
         }
     }
 }
@@ -161,9 +166,9 @@ impl<T: ?Sized, A: Allocator> WithTail<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
     pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithTail<T, A>> {
         OnceListCore {
-            head: TailSlot::new(),
+            head_slot: TailSlot::new(),
             alloc,
-            mode: WithTail::new(),
+            cache_mode: WithTail::new(),
         }
     }
 }
@@ -220,9 +225,9 @@ impl<T: ?Sized> WithLen<T, Global> {
     /// Creates a new empty list using this cache mode.
     pub fn new_list() -> OnceListCore<T, Global, WithLen<T, Global>> {
         OnceListCore {
-            head: TailSlot::new(),
+            head_slot: TailSlot::new(),
             alloc: Global,
-            mode: WithLen::new(),
+            cache_mode: WithLen::new(),
         }
     }
 }
@@ -231,9 +236,9 @@ impl<T: ?Sized, A: Allocator> WithLen<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
     pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithLen<T, A>> {
         OnceListCore {
-            head: TailSlot::new(),
+            head_slot: TailSlot::new(),
             alloc,
-            mode: WithLen::new(),
+            cache_mode: WithLen::new(),
         }
     }
 }
@@ -305,9 +310,9 @@ impl<T: ?Sized> WithTailLen<T, Global> {
     /// Creates a new empty list using this cache mode.
     pub fn new_list() -> OnceListCore<T, Global, WithTailLen<T, Global>> {
         OnceListCore {
-            head: TailSlot::new(),
+            head_slot: TailSlot::new(),
             alloc: Global,
-            mode: WithTailLen::new(),
+            cache_mode: WithTailLen::new(),
         }
     }
 }
@@ -316,9 +321,9 @@ impl<T: ?Sized, A: Allocator> WithTailLen<T, A> {
     /// Creates a new empty list with the given allocator using this cache mode.
     pub fn new_list_in(alloc: A) -> OnceListCore<T, A, WithTailLen<T, A>> {
         OnceListCore {
-            head: TailSlot::new(),
+            head_slot: TailSlot::new(),
             alloc,
-            mode: WithTailLen::new(),
+            cache_mode: WithTailLen::new(),
         }
     }
 }

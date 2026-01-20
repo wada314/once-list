@@ -23,7 +23,10 @@ By default, none of the features are enabled.
   - Uses the `allocator_api` std unstable feature. Note that even without this feature, this crate still supports the allocators thanks to the [`allocator_api2`] crate.
   - Supports the special methods for the unsized value types. See the doc of [`OnceList`] for more details.
 
-- `sync`: This library internally uses [`std::cell::OnceCell`] which is not thread-safe. When you enable this feature, this library uses the thread-safe ][`std::sync::OnceLock`] instead.
+- `sync`: This library internally uses [`std::cell::OnceCell`] which is not thread-safe. When you enable this feature, this library uses the thread-safe [`std::sync::OnceLock`] instead.
+
+  - Note: This does **not** make the caching modes thread-safe. The cache modes (`OnceListWithLen` / `OnceListWithTail` / `OnceListWithTailLen`) are intentionally "single-thread oriented" and use `Cell` internally, so they do not implement `Sync` and cannot be shared across threads.
+    If you need multi-thread access, use the default `OnceList` (no-cache mode), and ensure `T` / allocator types satisfy the usual `Send`/`Sync` bounds.
 
 [`OnceList`]: https://docs.rs/once-list2/latest/once_list2/struct.OnceList.html
 [`std::cell::OnceCell`]: https://doc.rust-lang.org/std/cell/struct.OnceCell.html

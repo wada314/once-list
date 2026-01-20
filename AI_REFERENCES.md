@@ -17,4 +17,8 @@
   - Docs now point to `OnceListWith*::{new,new_in}` instead.
 - Fixed feature-flag build:
   - Enabling `nightly` failed due to missing `OnceCell` import in `remove_unsized_as`; added `#[cfg(feature="nightly")] use crate::OnceCell;` in `src/once_list.rs`.
+- Documented `sync` + cache-mode thread-safety:
+  - Clarified in `readme.md` that `sync` swaps `OnceCell` to `OnceLock`, but cache modes are still single-thread oriented and not `Sync`.
+- Added per-file copyright/license headers:
+  - Inserted the same Apache-2.0 header used in `src/lib.rs` at the top of every Rust source file under `src/`.
 

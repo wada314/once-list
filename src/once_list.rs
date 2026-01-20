@@ -301,14 +301,6 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
         last_opt
     }
 
-    pub(crate) fn last_cell(&self) -> &NextSlot<T, A> {
-        let mut next_cell = &self.head_slot;
-        while let Some(next_box) = next_cell.get() {
-            next_cell = &next_box.next;
-        }
-        next_cell
-    }
-
     /// Returns an iterator over the `&T` references in the list.
     pub fn iter(&self) -> Iter<'_, T, A> {
         Iter::new(&self.head_slot)
@@ -503,13 +495,29 @@ where
     ///
     /// [`std::iter::Extend::extend`]: https://doc.rust-lang.org/std/iter/trait.Extend.html#tymethod.extend
     pub fn extend<U: IntoIterator<Item = T>>(&self, iter: U) {
-        let mut last_cell = self.last_cell();
         let alloc = self.allocator();
+
+        // Prefer the cached tail insertion slot when available, otherwise fall back to the head.
+        //
+        // IMPORTANT: Use `try_insert2` and retry on contention so that this method never drops
+        // values under `sync` (OnceLock) mode.
+        let mut next_cell = self.cache_mode.tail_slot_opt().unwrap_or(&self.head_slot);
+
         for val in iter {
-            let _ = last_cell.set(Box::new_in(Cons::new(val), A::clone(alloc)));
-            let inserted = unsafe { &last_cell.get().unwrap_unchecked() };
-            self.cache_mode.on_push_success(&inserted.next);
-            last_cell = &inserted.next;
+            let mut new_cons = Box::new_in(Cons::new(val), A::clone(alloc));
+            loop {
+                match next_cell.try_insert2(new_cons) {
+                    Ok(inserted) => {
+                        self.cache_mode.on_push_success(&inserted.next);
+                        next_cell = &inserted.next;
+                        break;
+                    }
+                    Err((cur_cons, new_cons2)) => {
+                        next_cell = &cur_cons.next;
+                        new_cons = new_cons2;
+                    }
+                }
+            }
         }
     }
 }

@@ -19,6 +19,9 @@
   - Enabling `nightly` failed due to missing `OnceCell` import in `remove_unsized_as`; added `#[cfg(feature="nightly")] use crate::OnceCell;` in `src/once_list.rs`.
 - Documented `sync` + cache-mode thread-safety:
   - Clarified in `readme.md` that `sync` swaps `OnceCell` to `OnceLock`, but cache modes are still single-thread oriented and not `Sync`.
+- Fixed `extend()` to honor caching + avoid value loss under contention:
+  - `OnceListCore::extend(&self, ..)` now starts from `CacheMode::tail_slot_opt()` when available, otherwise from the head.
+  - Uses `try_insert2` retry loop (same approach as `push_inner`) so `--features sync` doesn't drop elements when concurrent inserts happen.
 - Added per-file copyright/license headers:
   - Inserted the same Apache-2.0 header used in `src/lib.rs` at the top of every Rust source file under `src/`.
 

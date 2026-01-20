@@ -266,19 +266,19 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
         self.iter().any(|v| v == val)
     }
 
-    /// Returns a first value, if it exists.
-    pub fn first(&self) -> Option<&T> {
+    /// Returns the front value, if it exists.
+    pub fn front(&self) -> Option<&T> {
         self.head_slot.get().map(|c| &c.val)
     }
 
-    /// Returns a mutable reference to the first value, if it exists.
-    pub fn first_mut(&mut self) -> Option<&mut T> {
+    /// Returns a mutable reference to the front value, if it exists.
+    pub fn front_mut(&mut self) -> Option<&mut T> {
         self.head_slot.get_mut().map(|c| &mut c.val)
     }
 
-    /// Returns a last value, if it exists.
+    /// Returns the back value, if it exists.
     /// This method is O(n).
-    pub fn last(&self) -> Option<&T> {
+    pub fn back(&self) -> Option<&T> {
         let mut last_opt = None;
         let mut next_cell = &self.head_slot;
         while let Some(next_box) = next_cell.get() {
@@ -288,9 +288,9 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
         last_opt
     }
 
-    /// Returns a mutable reference to the last value, if it exists.
+    /// Returns a mutable reference to the back value, if it exists.
     /// This method is O(n).
-    pub fn last_mut(&mut self) -> Option<&mut T> {
+    pub fn back_mut(&mut self) -> Option<&mut T> {
         let mut last_opt = None;
         let mut next_cell = &mut self.head_slot;
         while let Some(next_box) = next_cell.get_mut() {
@@ -299,6 +299,34 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
             next_cell = &mut next_cons.next;
         }
         last_opt
+    }
+
+    /// Returns the front value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::front`].
+    pub fn first(&self) -> Option<&T> {
+        self.front()
+    }
+
+    /// Returns a mutable reference to the front value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::front_mut`].
+    pub fn first_mut(&mut self) -> Option<&mut T> {
+        self.front_mut()
+    }
+
+    /// Returns the back value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::back`].
+    pub fn last(&self) -> Option<&T> {
+        self.back()
+    }
+
+    /// Returns a mutable reference to the back value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::back_mut`].
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        self.back_mut()
     }
 
     /// Returns an iterator over the `&T` references in the list.
@@ -476,6 +504,13 @@ impl<T, A: Allocator, C> OnceListCore<T, A, C>
 where
     C: CacheMode<T, A>,
 {
+    /// Removes the front value from the list, and returns it.
+    ///
+    /// This method is O(1).
+    pub fn pop_front(&mut self) -> Option<T> {
+        self.remove(|_| true)
+    }
+
     /// Find a first value in the list matches the predicate, remove that item from the list,
     /// and then returns that value.
     pub fn remove<P>(&mut self, mut pred: P) -> Option<T>

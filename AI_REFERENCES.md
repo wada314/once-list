@@ -2,6 +2,11 @@
 
 ## 2026-01-20
 
+- Followed `std::collections::LinkedList` naming:
+  - Added `OnceListCore::{front, front_mut, back, back_mut}` as the preferred naming.
+  - Kept `first/last` as compatibility aliases (delegating to `front/back`).
+  - Added `OnceListCore::pop_front()` (implemented as `remove(|_| true)`).
+
 - Renamed `OnceListCore` internals for clarity:
   - `mode: M` -> `cache_mode: C`
   - `head: TailSlot<...>` -> `head_slot: TailSlot<...>`

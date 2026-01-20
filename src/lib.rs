@@ -162,17 +162,38 @@ mod tests {
         assert_eq!(list.iter().next(), None);
     });
 
-    test_all_i32_variants!(fn test_first_last(list) {
-        assert_eq!(list.first(), None);
-        assert_eq!(list.last(), None);
+    test_all_i32_variants!(fn test_front_back(list) {
+        assert_eq!(list.front(), None);
+        assert_eq!(list.back(), None);
 
         list.push(42);
-        assert_eq!(list.first(), Some(&42));
-        assert_eq!(list.last(), Some(&42));
+        assert_eq!(list.front(), Some(&42));
+        assert_eq!(list.back(), Some(&42));
 
         list.extend([1, 2, 3]);
-        assert_eq!(list.first(), Some(&42));
-        assert_eq!(list.last(), Some(&3));
+        assert_eq!(list.front(), Some(&42));
+        assert_eq!(list.back(), Some(&3));
+
+        // Compatibility aliases.
+        assert_eq!(list.first(), list.front());
+        assert_eq!(list.last(), list.back());
+    });
+
+    test_all_i32_variants!(fn test_pop_front(list) {
+        let mut list = list;
+        assert_eq!(list.pop_front(), None);
+
+        list.extend([1, 2, 3]);
+        assert_eq!(list.pop_front(), Some(1));
+        assert_eq!(list.front(), Some(&2));
+        assert_eq!(list.back(), Some(&3));
+        assert_eq!(list.len(), 2);
+
+        assert_eq!(list.pop_front(), Some(2));
+        assert_eq!(list.pop_front(), Some(3));
+        assert_eq!(list.pop_front(), None);
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
     });
 
     test_all_i32_variants!(fn test_contains(list) {

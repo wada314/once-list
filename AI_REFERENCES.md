@@ -2,6 +2,12 @@
 
 ## 2026-01-20
 
+- Followed `std::collections::LinkedList` naming:
+  - Added `OnceListCore::{front, front_mut, back, back_mut}` as the preferred naming.
+  - Kept `first/last` as compatibility aliases (delegating to `front/back`).
+  - Added `OnceListCore::pop_front()` (implemented as `remove(|_| true)`).
+  - Added `OnceListCore::push_back()` as the preferred naming and kept `push()` as a compatibility alias.
+
 - Renamed `OnceListCore` internals for clarity:
   - `mode: M` -> `cache_mode: C`
   - `head: TailSlot<...>` -> `head_slot: TailSlot<...>`
@@ -25,3 +31,15 @@
 - Added per-file copyright/license headers:
   - Inserted the same Apache-2.0 header used in `src/lib.rs` at the top of every Rust source file under `src/`.
 
+## 2026-01-22
+
+- Generalized `Default` implementation:
+  - Implemented `Default` for cache mode types (`NoCache`, `WithTail`, `WithLen`, `WithTailLen`).
+  - Implemented `Default for OnceListCore<T, A, C>` with `A: Default` and `C: Default`.
+
+- Added `IntoIterator` for references:
+  - `IntoIterator for &OnceListCore` yields `&T` via `iter()`
+  - `IntoIterator for &mut OnceListCore` yields `&mut T` via `iter_mut()`
+
+- Added tests for reference iteration:
+  - Added `test_into_iter_for_ref` and `test_into_iter_for_mut_ref_allows_in_place_update` to cover `for x in &list` / `for x in &mut list`.

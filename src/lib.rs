@@ -135,13 +135,13 @@ mod tests {
     }
 
     test_all_i32_variants!(fn test_push(list) {
-        let val = list.push(42);
+        let val = list.push_back(42);
         assert_eq!(val, &42);
         assert_eq!(list.len(), 1);
         assert_eq!(list.clone().into_iter().collect::<Vec<_>>(), vec![42]);
 
-        list.push(100);
-        list.push(3);
+        list.push_back(100);
+        list.push_back(3);
         assert_eq!(list.len(), 3);
         assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![42, 100, 3]);
     });
@@ -162,17 +162,38 @@ mod tests {
         assert_eq!(list.iter().next(), None);
     });
 
-    test_all_i32_variants!(fn test_first_last(list) {
-        assert_eq!(list.first(), None);
-        assert_eq!(list.last(), None);
+    test_all_i32_variants!(fn test_front_back(list) {
+        assert_eq!(list.front(), None);
+        assert_eq!(list.back(), None);
 
-        list.push(42);
-        assert_eq!(list.first(), Some(&42));
-        assert_eq!(list.last(), Some(&42));
+        list.push_back(42);
+        assert_eq!(list.front(), Some(&42));
+        assert_eq!(list.back(), Some(&42));
 
         list.extend([1, 2, 3]);
-        assert_eq!(list.first(), Some(&42));
-        assert_eq!(list.last(), Some(&3));
+        assert_eq!(list.front(), Some(&42));
+        assert_eq!(list.back(), Some(&3));
+
+        // Compatibility aliases.
+        assert_eq!(list.first(), list.front());
+        assert_eq!(list.last(), list.back());
+    });
+
+    test_all_i32_variants!(fn test_pop_front(list) {
+        let mut list = list;
+        assert_eq!(list.pop_front(), None);
+
+        list.extend([1, 2, 3]);
+        assert_eq!(list.pop_front(), Some(1));
+        assert_eq!(list.front(), Some(&2));
+        assert_eq!(list.back(), Some(&3));
+        assert_eq!(list.len(), 2);
+
+        assert_eq!(list.pop_front(), Some(2));
+        assert_eq!(list.pop_front(), Some(3));
+        assert_eq!(list.pop_front(), None);
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
     });
 
     test_all_i32_variants!(fn test_contains(list) {
@@ -201,7 +222,7 @@ mod tests {
     });
 
     test_all_i32_variants!(fn test_iter_sees_push_after_exhausted(list) {
-        list.push(1);
+        list.push_back(1);
 
         let mut it = list.iter();
         assert_eq!(it.next(), Some(&1));
@@ -209,13 +230,13 @@ mod tests {
 
         // After the iterator reached the end, pushing a new element should make it visible
         // from the same iterator.
-        list.push(2);
+        list.push_back(2);
         assert_eq!(it.next(), Some(&2));
         assert_eq!(it.next(), None);
     });
 
     test_all_i32_variants!(fn test_iter_sees_extend_after_exhausted(list) {
-        list.push(1);
+        list.push_back(1);
 
         let mut it = list.iter();
         assert_eq!(it.next(), Some(&1));
@@ -237,6 +258,32 @@ mod tests {
         assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
     });
 
+    test_all_i32_variants!(fn test_into_iter_for_ref(list) {
+        list.extend([1, 2, 3]);
+
+        // `IntoIterator for &OnceListCore` should yield `&T`.
+        let collected = (&list).into_iter().copied().collect::<Vec<_>>();
+        assert_eq!(collected, vec![1, 2, 3]);
+
+        // Also ensure `for x in &list` works (uses the same `IntoIterator` impl).
+        let mut sum = 0;
+        for &v in &list {
+            sum += v;
+        }
+        assert_eq!(sum, 6);
+    });
+
+    test_all_i32_variants!(fn test_into_iter_for_mut_ref_allows_in_place_update(list) {
+        let mut list = list;
+        list.extend([1, 2, 3]);
+
+        // `IntoIterator for &mut OnceListCore` should yield `&mut T`.
+        for v in &mut list {
+            *v += 10;
+        }
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
+    });
+
     test_all_i32_variants!(fn test_iter_mut_empty_and_singleton(list) {
         // Empty list
         {
@@ -245,7 +292,7 @@ mod tests {
             assert!(it.next().is_none());
 
             // Singleton list (reuse the same list type/instance)
-            empty.push(1);
+            empty.push_back(1);
             let mut it = empty.iter_mut();
             let v = it.next().unwrap();
             *v = 2;

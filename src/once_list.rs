@@ -76,7 +76,7 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 /// - **No cache (default)**:
 ///   - `OnceList::<T>::new()`
 ///   - `OnceList::<T, A>::new_in(alloc)`
-///   - `push()`: O(n), `len()`: O(n)
+///   - `push_back()`: O(n), `len()`: O(n)
 ///
 /// - **Len cache** (O(1) `len()`):
 ///   - Type: `once_list2::OnceListWithLen<T, A>`
@@ -86,7 +86,7 @@ pub type OnceListWithTailLen<T, A = Global> = OnceListCore<T, A, WithTailLen<T, 
 ///   - Type: `once_list2::OnceListWithTail<T, A>`
 ///   - Constructors: `OnceListWithTail::<T>::new()` / `OnceListWithTail::<T, A>::new_in(alloc)`
 ///   - Note: This mode caches the *next insertion slot* and speeds up operations that need to find
-///     the tail insertion point (e.g. `push()` / `extend()`), but it does not make `last()` O(1).
+///     the tail insertion point (e.g. `push_back()` / `extend()`), but it does not make `back()` O(1).
 ///
 /// - **Tail + len cache**:
 ///   - Type: `once_list2::OnceListWithTailLen<T, A>`
@@ -266,19 +266,19 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
         self.iter().any(|v| v == val)
     }
 
-    /// Returns a first value, if it exists.
-    pub fn first(&self) -> Option<&T> {
+    /// Returns the front value, if it exists.
+    pub fn front(&self) -> Option<&T> {
         self.head_slot.get().map(|c| &c.val)
     }
 
-    /// Returns a mutable reference to the first value, if it exists.
-    pub fn first_mut(&mut self) -> Option<&mut T> {
+    /// Returns a mutable reference to the front value, if it exists.
+    pub fn front_mut(&mut self) -> Option<&mut T> {
         self.head_slot.get_mut().map(|c| &mut c.val)
     }
 
-    /// Returns a last value, if it exists.
+    /// Returns the back value, if it exists.
     /// This method is O(n).
-    pub fn last(&self) -> Option<&T> {
+    pub fn back(&self) -> Option<&T> {
         let mut last_opt = None;
         let mut next_cell = &self.head_slot;
         while let Some(next_box) = next_cell.get() {
@@ -288,9 +288,9 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
         last_opt
     }
 
-    /// Returns a mutable reference to the last value, if it exists.
+    /// Returns a mutable reference to the back value, if it exists.
     /// This method is O(n).
-    pub fn last_mut(&mut self) -> Option<&mut T> {
+    pub fn back_mut(&mut self) -> Option<&mut T> {
         let mut last_opt = None;
         let mut next_cell = &mut self.head_slot;
         while let Some(next_box) = next_cell.get_mut() {
@@ -299,6 +299,34 @@ impl<T: ?Sized, A: Allocator, C> OnceListCore<T, A, C> {
             next_cell = &mut next_cons.next;
         }
         last_opt
+    }
+
+    /// Returns the front value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::front`].
+    pub fn first(&self) -> Option<&T> {
+        self.front()
+    }
+
+    /// Returns a mutable reference to the front value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::front_mut`].
+    pub fn first_mut(&mut self) -> Option<&mut T> {
+        self.front_mut()
+    }
+
+    /// Returns the back value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::back`].
+    pub fn last(&self) -> Option<&T> {
+        self.back()
+    }
+
+    /// Returns a mutable reference to the back value, if it exists.
+    ///
+    /// This is an alias of [`OnceListCore::back_mut`].
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        self.back_mut()
     }
 
     /// Returns an iterator over the `&T` references in the list.
@@ -476,6 +504,13 @@ impl<T, A: Allocator, C> OnceListCore<T, A, C>
 where
     C: CacheMode<T, A>,
 {
+    /// Removes the front value from the list, and returns it.
+    ///
+    /// This method is O(1).
+    pub fn pop_front(&mut self) -> Option<T> {
+        self.remove(|_| true)
+    }
+
     /// Find a first value in the list matches the predicate, remove that item from the list,
     /// and then returns that value.
     pub fn remove<P>(&mut self, mut pred: P) -> Option<T>
@@ -490,12 +525,19 @@ impl<T, A: Allocator + Clone, C> OnceListCore<T, A, C>
 where
     C: CacheMode<T, A>,
 {
+    /// Appends a value to the back of the list, and returns the reference to that value.
+    ///
+    /// Note that this method takes `&self`, not `&mut self`.
+    pub fn push_back(&self, val: T) -> &T {
+        let boxed_cons = Box::new_in(Cons::new(val), A::clone(&self.alloc));
+        self.push_inner(boxed_cons, |c| c)
+    }
+
     /// Appends a value to the list, and returns the reference to that value.
     ///
     /// Note that this method takes `&self`, not `&mut self`.
     pub fn push(&self, val: T) -> &T {
-        let boxed_cons = Box::new_in(Cons::new(val), A::clone(&self.alloc));
-        self.push_inner(boxed_cons, |c| c)
+        self.push_back(val)
     }
 
     /// An almost same method with the [`std::iter::Extend::extend`],
@@ -530,9 +572,13 @@ where
     }
 }
 
-impl<T: ?Sized> Default for OnceListCore<T, Global, NoCache> {
+impl<T: ?Sized, A: Allocator + Default, C: Default> Default for OnceListCore<T, A, C> {
     fn default() -> Self {
-        Self::new()
+        Self {
+            head_slot: NextSlot::new(),
+            alloc: A::default(),
+            cache_mode: C::default(),
+        }
     }
 }
 
@@ -599,6 +645,24 @@ where
 
     fn into_iter(self) -> Self::IntoIter {
         IntoIter(self.head_slot)
+    }
+}
+
+impl<'a, T: ?Sized, A: Allocator, C> IntoIterator for &'a OnceListCore<T, A, C> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T: ?Sized, A: Allocator, C> IntoIterator for &'a mut OnceListCore<T, A, C> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 

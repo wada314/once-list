@@ -106,7 +106,7 @@ pub trait CacheMode<T: ?Sized, A: Allocator>: sealed::Sealed + Clone {
 }
 
 /// No caching. This is the original behavior.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct NoCache;
 
 impl sealed::Sealed for NoCache {}
@@ -165,6 +165,12 @@ impl<T: ?Sized, A: Allocator> WithTail<T, A> {
     }
 }
 
+impl<T: ?Sized, A: Allocator> Default for WithTail<T, A> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Len-only caching mode (single-thread oriented).
 pub struct WithLen<T: ?Sized, A: Allocator> {
     len: Cell<usize>,
@@ -210,6 +216,12 @@ impl<T: ?Sized, A: Allocator> WithLen<T, A> {
             len: Cell::new(0),
             _phantom: ::std::marker::PhantomData,
         }
+    }
+}
+
+impl<T: ?Sized, A: Allocator> Default for WithLen<T, A> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -273,5 +285,11 @@ impl<T: ?Sized, A: Allocator> WithTailLen<T, A> {
             next_slot: Cell::new(None),
             len: Cell::new(0),
         }
+    }
+}
+
+impl<T: ?Sized, A: Allocator> Default for WithTailLen<T, A> {
+    fn default() -> Self {
+        Self::new()
     }
 }

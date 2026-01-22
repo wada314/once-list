@@ -572,9 +572,13 @@ where
     }
 }
 
-impl<T: ?Sized> Default for OnceListCore<T, Global, NoCache> {
+impl<T: ?Sized, A: Allocator + Default, C: Default> Default for OnceListCore<T, A, C> {
     fn default() -> Self {
-        Self::new()
+        Self {
+            head_slot: NextSlot::new(),
+            alloc: A::default(),
+            cache_mode: C::default(),
+        }
     }
 }
 

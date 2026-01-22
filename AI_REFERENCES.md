@@ -31,3 +31,8 @@
 - Added per-file copyright/license headers:
   - Inserted the same Apache-2.0 header used in `src/lib.rs` at the top of every Rust source file under `src/`.
 
+## 2026-01-22
+
+- Generalized `Default` implementation:
+  - Implemented `Default` for cache mode types (`NoCache`, `WithTail`, `WithLen`, `WithTailLen`).
+  - Implemented `Default for OnceListCore<T, A, C>` with `A: Default` and `C: Default`.

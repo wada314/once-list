@@ -648,6 +648,24 @@ where
     }
 }
 
+impl<'a, T: ?Sized, A: Allocator, C> IntoIterator for &'a OnceListCore<T, A, C> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T: ?Sized, A: Allocator, C> IntoIterator for &'a mut OnceListCore<T, A, C> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
 impl<T, A: Allocator + Clone, C> Extend<T> for OnceListCore<T, A, C>
 where
     C: CacheMode<T, A>,

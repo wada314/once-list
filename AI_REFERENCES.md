@@ -36,3 +36,7 @@
 - Generalized `Default` implementation:
   - Implemented `Default` for cache mode types (`NoCache`, `WithTail`, `WithLen`, `WithTailLen`).
   - Implemented `Default for OnceListCore<T, A, C>` with `A: Default` and `C: Default`.
+
+- Added `IntoIterator` for references:
+  - `IntoIterator for &OnceListCore` yields `&T` via `iter()`
+  - `IntoIterator for &mut OnceListCore` yields `&mut T` via `iter_mut()`

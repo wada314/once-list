@@ -258,6 +258,32 @@ mod tests {
         assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
     });
 
+    test_all_i32_variants!(fn test_into_iter_for_ref(list) {
+        list.extend([1, 2, 3]);
+
+        // `IntoIterator for &OnceListCore` should yield `&T`.
+        let collected = (&list).into_iter().copied().collect::<Vec<_>>();
+        assert_eq!(collected, vec![1, 2, 3]);
+
+        // Also ensure `for x in &list` works (uses the same `IntoIterator` impl).
+        let mut sum = 0;
+        for &v in &list {
+            sum += v;
+        }
+        assert_eq!(sum, 6);
+    });
+
+    test_all_i32_variants!(fn test_into_iter_for_mut_ref_allows_in_place_update(list) {
+        let mut list = list;
+        list.extend([1, 2, 3]);
+
+        // `IntoIterator for &mut OnceListCore` should yield `&mut T`.
+        for v in &mut list {
+            *v += 10;
+        }
+        assert_eq!(list.into_iter().collect::<Vec<_>>(), vec![11, 12, 13]);
+    });
+
     test_all_i32_variants!(fn test_iter_mut_empty_and_singleton(list) {
         // Empty list
         {

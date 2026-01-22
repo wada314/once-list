@@ -40,3 +40,6 @@
 - Added `IntoIterator` for references:
   - `IntoIterator for &OnceListCore` yields `&T` via `iter()`
   - `IntoIterator for &mut OnceListCore` yields `&mut T` via `iter_mut()`
+
+- Added tests for reference iteration:
+  - Added `test_into_iter_for_ref` and `test_into_iter_for_mut_ref_allows_in_place_update` to cover `for x in &list` / `for x in &mut list`.

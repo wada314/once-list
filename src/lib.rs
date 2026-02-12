@@ -33,7 +33,7 @@ mod iter;
 mod once_list;
 mod oncecell_ext;
 
-pub use crate::cache_mode::{NoCache, WithLen, WithTail, WithTailLen};
+pub use crate::cache_mode::{CacheMode, NoCache, WithLen, WithTail, WithTailLen};
 pub use crate::iter::{IntoIter, Iter, IterMut};
 pub use crate::once_list::OnceList;
 pub use crate::once_list::OnceListCore;
